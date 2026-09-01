@@ -12,6 +12,7 @@ import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.IBinder;
 import android.provider.Settings;
+import android.util.Log;
 
 import org.json.JSONObject;
 
@@ -24,6 +25,7 @@ public class BedtimeMonitorService extends Service {
     private volatile boolean running;
     private Thread worker;
     private static final String CHANNEL = "bedtime_monitor";
+    private static final String TAG = "BedtimeMonitor";
 
     @Override public void onCreate() {
         super.onCreate();
@@ -38,6 +40,7 @@ public class BedtimeMonitorService extends Service {
             .setOngoing(true).build();
         startForeground(7, n);
         running = true;
+        Log.i(TAG, "Service started");
         worker = new Thread(this::pollLoop, "bedtime-poll");
         worker.start();
     }
@@ -56,43 +59,63 @@ public class BedtimeMonitorService extends Service {
 
     private void showManagedLock() {
         try {
+            Log.i(TAG, "Applying managed lock");
             Intent i = new Intent(this, BedtimeLockActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             startActivity(i);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to show managed lock", e);
+        }
     }
 
     private void hideManagedLock() {
         try {
             ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null && am.getLockTaskModeState() != ActivityManager.LOCK_TASK_MODE_NONE) {
+                Log.i(TAG, "Removing managed lock");
                 Intent i = new Intent(this, BedtimeLockActivity.class)
                     .putExtra("bedtime_off", true)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 startActivity(i);
+            } else {
+                Log.i(TAG, "Managed lock already off");
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to hide managed lock", e);
+        }
     }
 
     private void pollLoop() {
         while (running) {
+            HttpURLConnection c = null;
             try {
                 SharedPreferences p = getSharedPreferences("cfg", MODE_PRIVATE);
                 String base = p.getString("backend", "");
                 String child = p.getString("child", "child-001");
+                Log.i(TAG, "Poll config backend=" + base + " child=" + child);
+
                 if (!base.isEmpty()) {
                     URL url = new URL(base + "/api/children/" + child + "/bedtime");
-                    HttpURLConnection c = (HttpURLConnection) url.openConnection();
+                    Log.i(TAG, "GET " + url);
+                    c = (HttpURLConnection) url.openConnection();
+                    c.setRequestMethod("GET");
                     c.setConnectTimeout(5000);
                     c.setReadTimeout(5000);
+                    c.setUseCaches(false);
+                    c.setRequestProperty("Accept", "application/json");
+
                     int code = c.getResponseCode();
+                    Log.i(TAG, "HTTP " + code);
                     if (code == 200) {
                         StringBuilder sb = new StringBuilder();
                         try (BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()))) {
-                            String line; while ((line = br.readLine()) != null) sb.append(line);
+                            String line;
+                            while ((line = br.readLine()) != null) sb.append(line);
                         }
 
-                        JSONObject state = new JSONObject(sb.toString());
+                        String response = sb.toString();
+                        Log.i(TAG, "Response " + response);
+                        JSONObject state = new JSONObject(response);
                         boolean active = state.optBoolean("active", false);
                         boolean allowPowerControls = state.optBoolean("allowPowerControls", false);
                         p.edit()
@@ -100,6 +123,7 @@ public class BedtimeMonitorService extends Service {
                             .putBoolean("allow_power_controls", allowPowerControls)
                             .apply();
 
+                        Log.i(TAG, "State active=" + active + " allowPowerControls=" + allowPowerControls + " deviceOwner=" + isDeviceOwner());
                         if (isDeviceOwner()) {
                             BedtimeOverlay.hide(this);
                             if (active) showManagedLock();
@@ -108,15 +132,35 @@ public class BedtimeMonitorService extends Service {
                             if (active && Settings.canDrawOverlays(this)) BedtimeOverlay.show(this);
                             if (!active) BedtimeOverlay.hide(this);
                         }
+                    } else {
+                        Log.w(TAG, "Non-200 response: " + code);
                     }
-                    c.disconnect();
+                } else {
+                    Log.w(TAG, "Backend URL is empty");
                 }
-            } catch (Exception ignored) {}
-            try { Thread.sleep(3000); } catch (InterruptedException e) { return; }
+            } catch (Exception e) {
+                Log.e(TAG, "Poll failed: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+            } finally {
+                if (c != null) c.disconnect();
+            }
+
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                Log.i(TAG, "Poll loop interrupted");
+                return;
+            }
         }
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) { return START_STICKY; }
-    @Override public void onDestroy() { running = false; if (worker != null) worker.interrupt(); super.onDestroy(); }
+
+    @Override public void onDestroy() {
+        running = false;
+        if (worker != null) worker.interrupt();
+        Log.i(TAG, "Service destroyed");
+        super.onDestroy();
+    }
+
     @Override public IBinder onBind(Intent intent) { return null; }
 }
