@@ -22,7 +22,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="STEP 1 OF 4 — Prepare device"
+            android:text="STEP 1 OF 5 — Prepare device"
             android:textStyle="bold" />
 
         <TextView
@@ -88,6 +88,14 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="3. START BEDTIME MONITOR" />
+
+        <Button
+            android:id="@+id/btnRestoreAccounts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="4. IBALIK / ADD ULIT ANG MGA ACCOUNT"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/btnTestOverlay"
