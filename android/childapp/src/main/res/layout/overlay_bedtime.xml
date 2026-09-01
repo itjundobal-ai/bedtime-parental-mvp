@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="#FF10131A" android:clickable="true" android:focusable="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="vertical" android:gravity="center" android:padding="32dp">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="🌙" android:textSize="72sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="BEDTIME MODE" android:textColor="#FFFFFFFF" android:textSize="32sp" android:textStyle="bold" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="16dp" android:text="Time to rest.\nYour parent has enabled bedtime."
+            android:textColor="#FFE5E7EB" android:textSize="19sp" android:gravity="center" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="28dp" android:text="Waiting for parent unlock…"
+            android:textColor="#FF9CA3AF" android:textSize="15sp" />
+    </LinearLayout>
+</FrameLayout>
