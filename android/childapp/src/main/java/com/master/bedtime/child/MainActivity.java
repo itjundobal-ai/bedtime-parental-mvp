@@ -25,6 +25,7 @@ public class MainActivity extends Activity {
     private Button permission;
     private Button start;
     private Button test;
+    private Button restoreAccounts;
     private DevicePolicyManager dpm;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -41,6 +42,7 @@ public class MainActivity extends Activity {
         Button continueSetup = findViewById(R.id.btnContinueSetup);
         permission = findViewById(R.id.btnOverlayPermission);
         start = findViewById(R.id.btnStartMonitor);
+        restoreAccounts = findViewById(R.id.btnRestoreAccounts);
         test = findViewById(R.id.btnTestOverlay);
         dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
 
@@ -59,6 +61,7 @@ public class MainActivity extends Activity {
         });
 
         start.setOnClickListener(v -> startMonitor());
+        restoreAccounts.setOnClickListener(v -> showRestoreAccountsReminder());
         test.setOnClickListener(v -> testBedtime());
 
         if (!getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("account_reminder_seen", false)) {
@@ -78,27 +81,35 @@ public class MainActivity extends Activity {
 
     private void refreshSetupState() {
         boolean accountsConfirmed = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("accounts_confirmed", false);
+        boolean setupComplete = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
         boolean owner = isDeviceOwner();
 
         if (!accountsConfirmed) {
-            setupStep.setText("STEP 1 OF 4 — Remove saved accounts");
+            setupStep.setText("STEP 1 OF 5 — Remove saved accounts");
             deviceOwnerStatus.setText("Device Owner: waiting for account preparation");
             deviceOwnerHelp.setText("Pagkatapos alisin ang accounts, bumalik dito at pindutin ang TAPOS NA — CONTINUE SETUP.");
         } else if (!owner) {
-            setupStep.setText("STEP 2 OF 4 — Activate Device Owner");
+            setupStep.setText("STEP 2 OF 5 — Activate Device Owner");
             deviceOwnerStatus.setText("Device Owner: NOT ACTIVE");
             deviceOwnerHelp.setText("Ikonekta ang phone sa PC at patakbuhin:\n\nadb shell dpm set-device-owner com.master.bedtime.child/.BedtimeDeviceAdminReceiver\n\nPag success, bumalik sa app. Automatic nitong makikita ang Device Owner status.");
-        } else {
-            setupStep.setText("STEP 3 OF 4 — Pair and start monitor");
+        } else if (!setupComplete) {
+            setupStep.setText("STEP 3 OF 5 — Pair and start monitor");
             deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
             deviceOwnerHelp.setText("Managed mode ready. Ilagay ang Parent/Worker backend at Child ID, pagkatapos pindutin ang START BEDTIME MONITOR.");
+        } else {
+            setupStep.setText("STEP 5 OF 5 — Setup complete");
+            deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
+            deviceOwnerHelp.setText("Setup complete. Maaari nang ibalik ng parent ang mga account na inalis kanina.");
         }
 
         permission.setVisibility(owner ? View.GONE : View.VISIBLE);
-        start.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
+        start.setEnabled(accountsConfirmed && !setupComplete && (owner || Settings.canDrawOverlays(this)));
+        restoreAccounts.setVisibility(setupComplete ? View.VISIBLE : View.GONE);
         test.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
 
-        if (owner) {
+        if (setupComplete) {
+            status.setText(owner ? "READY — Managed Bedtime Monitor running" : "READY — Fallback Bedtime Monitor running");
+        } else if (owner) {
             status.setText("Managed setup ready — waiting for monitor start");
         }
     }
@@ -128,8 +139,8 @@ public class MainActivity extends Activity {
 
         Intent service = new Intent(this, BedtimeMonitorService.class);
         startForegroundService(service);
-        setupStep.setText("STEP 4 OF 4 — READY");
-        status.setText(owner ? "READY — Managed Bedtime Monitor running" : "READY — Fallback Bedtime Monitor running");
+        refreshSetupState();
+        showRestoreAccountsReminder();
     }
 
     private void testBedtime() {
@@ -155,6 +166,15 @@ public class MainActivity extends Activity {
                 getSharedPreferences("cfg", MODE_PRIVATE).edit().putBoolean("account_reminder_seen", true).apply();
                 openAccountsSettings();
             })
+            .show();
+    }
+
+    private void showRestoreAccountsReminder() {
+        new AlertDialog.Builder(this)
+            .setTitle("Setup complete")
+            .setMessage("Tapos na ang Bedtime setup. Maaari na ninyong ibalik o idagdag muli ang mga account na inalis kanina. Siguraduhing tama ang account credentials bago magpatuloy.")
+            .setNegativeButton("Mamaya", null)
+            .setPositiveButton("PUNTA SA ACCOUNTS", (dialog, which) -> openAccountsSettings())
             .show();
     }
 
