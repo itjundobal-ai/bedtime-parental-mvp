@@ -1,0 +1,51 @@
+name: Build Android APKs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-android.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.1.0'
+
+      - name: Build Parent and Child APKs
+        run: gradle :parentapp:assembleDebug :childapp:assembleDebug --stacktrace
+
+      - name: Upload Parent APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bedtime-parent-apk
+          path: android/parentapp/build/outputs/apk/debug/parentapp-debug.apk
+
+      - name: Upload Child APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bedtime-child-apk
+          path: android/childapp/build/outputs/apk/debug/childapp-debug.apk
