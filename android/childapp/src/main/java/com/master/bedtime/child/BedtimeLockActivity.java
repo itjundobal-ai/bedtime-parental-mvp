@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
@@ -16,12 +18,18 @@ import android.widget.TextView;
 public class BedtimeLockActivity extends Activity {
     private DevicePolicyManager dpm;
     private ComponentName admin;
+    private boolean exiting;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
         admin = new ComponentName(this, BedtimeDeviceAdminReceiver.class);
+
+        if (getIntent().getBooleanExtra("bedtime_off", false)) {
+            exitManagedLock();
+            return;
+        }
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -52,26 +60,38 @@ public class BedtimeLockActivity extends Activity {
         hideSystemUi();
     }
 
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (intent.getBooleanExtra("bedtime_off", false)) {
+            exitManagedLock();
+        }
+    }
+
     @Override protected void onResume() {
         super.onResume();
-        enterManagedLock();
-        hideSystemUi();
+        if (!exiting) {
+            enterManagedLock();
+            hideSystemUi();
+        }
     }
 
     private void enterManagedLock() {
         if (dpm == null || !dpm.isDeviceOwnerApp(getPackageName())) return;
         try {
             dpm.setLockTaskPackages(admin, new String[]{getPackageName()});
-            boolean allowPower = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("allow_power_controls", false);
-            int features = DevicePolicyManager.LOCK_TASK_FEATURE_NONE;
-            if (allowPower) features |= DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS;
-            dpm.setLockTaskFeatures(admin, features);
+            if (Build.VERSION.SDK_INT >= 28) {
+                boolean allowPower = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("allow_power_controls", false);
+                int features = DevicePolicyManager.LOCK_TASK_FEATURE_NONE;
+                if (allowPower) features |= DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS;
+                dpm.setLockTaskFeatures(admin, features);
+            }
             if (dpm.isLockTaskPermitted(getPackageName())) startLockTask();
         } catch (Exception ignored) {}
     }
 
     private void hideSystemUi() {
-        if (android.os.Build.VERSION.SDK_INT >= 30) {
+        if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController c = getWindow().getInsetsController();
             if (c != null) {
                 c.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
@@ -86,12 +106,13 @@ public class BedtimeLockActivity extends Activity {
         }
     }
 
-    public void exitManagedLock() {
+    private void exitManagedLock() {
+        exiting = true;
         try { stopLockTask(); } catch (Exception ignored) {}
         finishAndRemoveTask();
     }
 
     @Override public void onBackPressed() {
-        // Intentionally ignored while bedtime is active.
+        // Parent-controlled bedtime: Back is ignored while managed lock is active.
     }
 }
