@@ -78,6 +78,46 @@ Healthy online polling shows:
 4. Unlock/lock state transitions were adjusted so commands are not needlessly relaunched every poll and unlock is sent even if Android reports Lock Task already off.
 5. Phones may delay remote reaction if Android battery/background management suspends the monitor; set the Bedtime app to Unrestricted / No restrictions / Allow background activity.
 
+## TECNO Device Owner dead-end and recovery
+### Problem / initial assumption
+The original TECNO had an older Bedtime build installed as Device Owner. That build was signed with a different key that was no longer available. Because Device Owner is a protected admin state, replacing that package with the new permanently signed build was not possible by normal update.
+
+### Symptoms / logs
+- `adb install -r ...` failed with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` because the installed package signature did not match the new release key.
+- `adb shell dpm remove-active-admin --user 0 com.master.bedtime.child/.BedtimeDeviceAdminReceiver` failed with a `SecurityException` saying it was an attempt to remove a non-test admin.
+- Therefore the old Device Owner package could not be cleanly replaced or removed from outside the app.
+
+### Root cause
+The old Device Owner app was signed with a lost/different signing key and did not have a usable in-app self-release path signed by that same old key. Android correctly blocked both signature replacement and external removal of that protected Device Owner state.
+
+### Recovery that worked
+1. Factory reset / reprovision the TECNO so the stale Device Owner state and old package were removed.
+2. Enable USB debugging again after setup.
+3. Install the current permanently signed APK.
+4. When `adb install -r` reported Success but the package was not visible to `pm path`, explicitly install to the owner user:
+
+```powershell
+adb install --user 0 "C:\Users\DELL\Downloads\childapp-release.apk"
+adb shell pm path com.master.bedtime.child
+```
+
+5. After `pm path` confirmed the package, set Device Owner again:
+
+```powershell
+adb shell dpm set-device-owner com.master.bedtime.child/.BedtimeDeviceAdminReceiver
+```
+
+6. Verify the command returns `Success: Device owner set to package ...` and `Active admin set to component ...`.
+
+### Important lesson
+For the old TECNO state, factory reset was genuinely required because the signing key needed to update/self-release the old Device Owner package was unavailable. The later success did not bypass Android's Device Owner protection; it came from clean reprovisioning with the permanent signing key and then setting Device Owner again correctly.
+
+### Prevention for future builds
+- Keep using the same permanent release signing key.
+- Never lose or rotate the signing key for an installed Device Owner build without a planned migration path.
+- Keep a tested in-app Device Owner release/reprovision mechanism in development/test builds so future test devices can be released before changing package/signing setup.
+- Record the exact installed signer/build when provisioning test devices.
+
 ## Important breakthrough — strong forced Bedtime lock
 ### Initial assumption
 At an earlier stage, a true parent-controlled forced lock looked impractical because ordinary Android overlays/activities can usually be escaped with Back, Recents, Home, system UI, or other navigation, and Android does not allow normal apps to intercept every system control.
