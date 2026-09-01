@@ -104,6 +104,14 @@
             android:layout_marginTop="12dp"
             android:text="TEST BEDTIME" />
 
+        <Button
+            android:id="@+id/btnReleaseDeviceOwner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="TEST ONLY — RELEASE DEVICE OWNER"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/status"
             android:layout_width="match_parent"
