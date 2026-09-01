@@ -1,9 +1,12 @@
 package com.master.bedtime.child;
 
+import android.app.ActivityManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.app.admin.DevicePolicyManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
@@ -46,6 +49,31 @@ public class BedtimeMonitorService extends Service {
         }
     }
 
+    private boolean isDeviceOwner() {
+        DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
+        return dpm != null && dpm.isDeviceOwnerApp(getPackageName());
+    }
+
+    private void showManagedLock() {
+        try {
+            Intent i = new Intent(this, BedtimeLockActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(i);
+        } catch (Exception ignored) {}
+    }
+
+    private void hideManagedLock() {
+        try {
+            ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null && am.getLockTaskModeState() != ActivityManager.LOCK_TASK_MODE_NONE) {
+                Intent i = new Intent(this, BedtimeLockActivity.class)
+                    .putExtra("bedtime_off", true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                startActivity(i);
+            }
+        } catch (Exception ignored) {}
+    }
+
     private void pollLoop() {
         while (running) {
             try {
@@ -72,11 +100,14 @@ public class BedtimeMonitorService extends Service {
                             .putBoolean("allow_power_controls", allowPowerControls)
                             .apply();
 
-                        // Standard overlay mode cannot block Android's hardware/system power menu.
-                        // We still keep the parent preference locally so managed/kiosk mode can
-                        // apply DevicePolicyManager LOCK_TASK_FEATURE_GLOBAL_ACTIONS later.
-                        if (active && Settings.canDrawOverlays(this)) BedtimeOverlay.show(this);
-                        if (!active) BedtimeOverlay.hide(this);
+                        if (isDeviceOwner()) {
+                            BedtimeOverlay.hide(this);
+                            if (active) showManagedLock();
+                            else hideManagedLock();
+                        } else {
+                            if (active && Settings.canDrawOverlays(this)) BedtimeOverlay.show(this);
+                            if (!active) BedtimeOverlay.hide(this);
+                        }
                     }
                     c.disconnect();
                 }
