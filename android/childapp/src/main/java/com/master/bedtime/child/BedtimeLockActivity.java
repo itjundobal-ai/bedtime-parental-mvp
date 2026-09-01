@@ -12,22 +12,20 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
-import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 public class BedtimeLockActivity extends Activity {
+    private static volatile BedtimeLockActivity activeInstance;
+
     private DevicePolicyManager dpm;
     private ComponentName admin;
     private boolean exiting;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        activeInstance = this;
 
-        // The physical power button remains functional for screen off/on.
-        // Bedtime protection is provided by managed Lock Task, not by intercepting
-        // the hardware power key.
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (Build.VERSION.SDK_INT >= 27) {
             setShowWhenLocked(true);
         }
@@ -82,16 +80,28 @@ public class BedtimeLockActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        activeInstance = this;
         if (!exiting) {
             enterManagedLock();
             hideSystemUi();
         }
     }
 
+    @Override protected void onDestroy() {
+        if (activeInstance == this) activeInstance = null;
+        super.onDestroy();
+    }
+
+    public static boolean requestRemoteUnlock() {
+        BedtimeLockActivity current = activeInstance;
+        if (current == null || current.isFinishing()) return false;
+        current.runOnUiThread(current::exitManagedLock);
+        return true;
+    }
+
     @Override public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus && !exiting) {
-            // Re-apply immersive managed lock after screen wake or temporary system UI.
             enterManagedLock();
             hideSystemUi();
         }
@@ -103,9 +113,6 @@ public class BedtimeLockActivity extends Activity {
             dpm.setLockTaskPackages(admin, new String[]{getPackageName()});
 
             if (Build.VERSION.SDK_INT >= 28) {
-                // Keep global actions disabled while Bedtime is ON. This suppresses
-                // the normal on-screen power/restart menu in managed Lock Task mode.
-                // The hardware power button can still turn the display off/on.
                 dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_NONE);
             }
 
@@ -133,15 +140,21 @@ public class BedtimeLockActivity extends Activity {
     }
 
     private void exitManagedLock() {
+        if (exiting) return;
         exiting = true;
         try {
             stopLockTask();
+        } catch (Exception ignored) {
+        }
+        try {
+            if (dpm != null && dpm.isDeviceOwnerApp(getPackageName())) {
+                dpm.setLockTaskPackages(admin, new String[]{});
+            }
         } catch (Exception ignored) {
         }
         finishAndRemoveTask();
     }
 
     @Override public void onBackPressed() {
-        // Parent-controlled bedtime: Back is ignored while managed lock is active.
     }
 }
