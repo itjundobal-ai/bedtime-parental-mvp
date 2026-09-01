@@ -2,6 +2,10 @@ name = "bedtime-parental-api"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
 
-[[kv_namespaces]]
-binding = "BEDTIME_STATE"
-id = "25c402d731594bb08f671477458d5b3a"
+[[durable_objects.bindings]]
+name = "BEDTIME_STATE_DO"
+class_name = "BedtimeState"
+
+[[migrations]]
+tag = "v1-durable-bedtime-state"
+new_sqlite_classes = [ "BedtimeState" ]
