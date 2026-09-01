@@ -79,11 +79,24 @@ public class MainActivity extends Activity {
             showAccountPreparationReminder();
         }
         refreshSetupState();
+        autoStartConfiguredMonitor();
     }
 
     @Override protected void onResume() {
         super.onResume();
         refreshSetupState();
+        autoStartConfiguredMonitor();
+    }
+
+    private void autoStartConfiguredMonitor() {
+        String role = getSharedPreferences("app_role", MODE_PRIVATE).getString("role", "");
+        boolean setupComplete = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
+        if (!"child".equals(role) || !setupComplete) return;
+
+        try {
+            startForegroundService(new Intent(this, BedtimeMonitorService.class));
+        } catch (Exception ignored) {
+        }
     }
 
     private boolean isDeviceOwner() {
@@ -131,7 +144,7 @@ public class MainActivity extends Activity {
         } else {
             setupStep.setText("STEP 6 OF 6 — Setup complete");
             deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
-            deviceOwnerHelp.setText("Setup complete. Panatilihing Unrestricted / No restrictions ang battery/background setting para mabilis ang remote Bedtime response kahit unplugged o screen off.");
+            deviceOwnerHelp.setText("Setup complete. Auto-start na ang monitor kapag binuksan muli ang CHILD app, pagkatapos ng APK update, at pagkatapos ng reboot. Panatilihin pa rin ang Unrestricted / No restrictions battery setting.");
         }
 
         permission.setVisibility(owner ? View.GONE : View.VISIBLE);
@@ -143,7 +156,7 @@ public class MainActivity extends Activity {
         releaseDeviceOwner.setVisibility(owner ? View.VISIBLE : View.GONE);
 
         if (setupComplete) {
-            status.setText(owner ? "READY — Managed Bedtime Monitor running" : "READY — Fallback Bedtime Monitor running");
+            status.setText(owner ? "READY — Managed Bedtime Monitor configured" : "READY — Fallback Bedtime Monitor configured");
         } else if (owner) {
             status.setText("Managed setup ready — waiting for monitor start");
         }
