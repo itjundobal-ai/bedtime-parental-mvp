@@ -127,6 +127,13 @@ public class BedtimeMonitorService extends Service {
     private void hideManagedLock() {
         try {
             Log.i(TAG, "Removing managed lock");
+
+            if (BedtimeLockActivity.requestRemoteUnlock()) {
+                Log.i(TAG, "Active bedtime screen accepted direct unlock");
+                return;
+            }
+
+            Log.i(TAG, "No active bedtime screen instance; using activity-intent unlock fallback");
             Intent i = new Intent(this, BedtimeLockActivity.class)
                 .putExtra("bedtime_off", true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
