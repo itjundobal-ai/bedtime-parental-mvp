@@ -10,6 +10,8 @@ import android.os.Build;
 import android.os.IBinder;
 import android.provider.Settings;
 
+import org.json.JSONObject;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -53,15 +55,26 @@ public class BedtimeMonitorService extends Service {
                 if (!base.isEmpty()) {
                     URL url = new URL(base + "/api/children/" + child + "/bedtime");
                     HttpURLConnection c = (HttpURLConnection) url.openConnection();
-                    c.setConnectTimeout(5000); c.setReadTimeout(5000);
+                    c.setConnectTimeout(5000);
+                    c.setReadTimeout(5000);
                     int code = c.getResponseCode();
                     if (code == 200) {
                         StringBuilder sb = new StringBuilder();
                         try (BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()))) {
                             String line; while ((line = br.readLine()) != null) sb.append(line);
                         }
-                        boolean active = sb.toString().contains("\"active\":true");
-                        p.edit().putBoolean("last_active", active).apply();
+
+                        JSONObject state = new JSONObject(sb.toString());
+                        boolean active = state.optBoolean("active", false);
+                        boolean allowPowerControls = state.optBoolean("allowPowerControls", false);
+                        p.edit()
+                            .putBoolean("last_active", active)
+                            .putBoolean("allow_power_controls", allowPowerControls)
+                            .apply();
+
+                        // Standard overlay mode cannot block Android's hardware/system power menu.
+                        // We still keep the parent preference locally so managed/kiosk mode can
+                        // apply DevicePolicyManager LOCK_TASK_FEATURE_GLOBAL_ACTIONS later.
                         if (active && Settings.canDrawOverlays(this)) BedtimeOverlay.show(this);
                         if (!active) BedtimeOverlay.hide(this);
                     }
