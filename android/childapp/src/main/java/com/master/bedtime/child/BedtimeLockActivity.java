@@ -5,6 +5,7 @@ import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -22,7 +23,15 @@ public class BedtimeLockActivity extends Activity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // The physical power button remains functional for screen off/on.
+        // Bedtime protection is provided by managed Lock Task, not by intercepting
+        // the hardware power key.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(true);
+        }
+
         dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
         admin = new ComponentName(this, BedtimeDeviceAdminReceiver.class);
 
@@ -35,6 +44,7 @@ public class BedtimeLockActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(48, 48, 48, 48);
+        root.setBackgroundColor(Color.rgb(185, 28, 28));
 
         TextView moon = new TextView(this);
         moon.setText("🌙");
@@ -43,14 +53,16 @@ public class BedtimeLockActivity extends Activity {
         root.addView(moon);
 
         TextView title = new TextView(this);
-        title.setText("Bedtime Mode");
+        title.setText("BEDTIME MODE");
         title.setTextSize(34);
+        title.setTextColor(Color.WHITE);
         title.setGravity(Gravity.CENTER);
         root.addView(title);
 
         TextView body = new TextView(this);
-        body.setText("Time to rest. Your parent will unlock the phone in the morning.");
+        body.setText("Phone locked for bedtime. Your parent will unlock it in the morning.");
         body.setTextSize(18);
+        body.setTextColor(Color.WHITE);
         body.setGravity(Gravity.CENTER);
         body.setPadding(0, 24, 0, 0);
         root.addView(body);
@@ -76,18 +88,32 @@ public class BedtimeLockActivity extends Activity {
         }
     }
 
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && !exiting) {
+            // Re-apply immersive managed lock after screen wake or temporary system UI.
+            enterManagedLock();
+            hideSystemUi();
+        }
+    }
+
     private void enterManagedLock() {
         if (dpm == null || !dpm.isDeviceOwnerApp(getPackageName())) return;
         try {
             dpm.setLockTaskPackages(admin, new String[]{getPackageName()});
+
             if (Build.VERSION.SDK_INT >= 28) {
-                boolean allowPower = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("allow_power_controls", false);
-                int features = DevicePolicyManager.LOCK_TASK_FEATURE_NONE;
-                if (allowPower) features |= DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS;
-                dpm.setLockTaskFeatures(admin, features);
+                // Keep global actions disabled while Bedtime is ON. This suppresses
+                // the normal on-screen power/restart menu in managed Lock Task mode.
+                // The hardware power button can still turn the display off/on.
+                dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_NONE);
             }
-            if (dpm.isLockTaskPermitted(getPackageName())) startLockTask();
-        } catch (Exception ignored) {}
+
+            if (dpm.isLockTaskPermitted(getPackageName())) {
+                startLockTask();
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private void hideSystemUi() {
@@ -108,7 +134,10 @@ public class BedtimeLockActivity extends Activity {
 
     private void exitManagedLock() {
         exiting = true;
-        try { stopLockTask(); } catch (Exception ignored) {}
+        try {
+            stopLockTask();
+        } catch (Exception ignored) {
+        }
         finishAndRemoveTask();
     }
 
