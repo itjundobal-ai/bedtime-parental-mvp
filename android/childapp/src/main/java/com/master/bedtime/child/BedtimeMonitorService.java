@@ -1,6 +1,5 @@
 package com.master.bedtime.child;
 
-import android.app.ActivityManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -27,6 +26,7 @@ public class BedtimeMonitorService extends Service {
     private static final String CHANNEL = "bedtime_monitor";
     private static final String TAG = "BedtimeMonitor";
     private static final long POLL_INTERVAL_MS = 1000L;
+    private Boolean lastAppliedActive = null;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -92,19 +92,31 @@ public class BedtimeMonitorService extends Service {
 
     private void hideManagedLock() {
         try {
-            ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-            if (am != null && am.getLockTaskModeState() != ActivityManager.LOCK_TASK_MODE_NONE) {
-                Log.i(TAG, "Removing managed lock");
-                Intent i = new Intent(this, BedtimeLockActivity.class)
-                    .putExtra("bedtime_off", true)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                startActivity(i);
-            } else {
-                Log.i(TAG, "Managed lock already off");
-            }
+            Log.i(TAG, "Removing managed lock");
+            Intent i = new Intent(this, BedtimeLockActivity.class)
+                .putExtra("bedtime_off", true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(i);
         } catch (Exception e) {
             Log.e(TAG, "Failed to hide managed lock", e);
         }
+    }
+
+    private void applyState(boolean active) {
+        if (lastAppliedActive != null && lastAppliedActive == active) {
+            return;
+        }
+
+        Log.i(TAG, "Applying state transition active=" + active);
+        if (isDeviceOwner()) {
+            BedtimeOverlay.hide(this);
+            if (active) showManagedLock();
+            else hideManagedLock();
+        } else {
+            if (active && Settings.canDrawOverlays(this)) BedtimeOverlay.show(this);
+            if (!active) BedtimeOverlay.hide(this);
+        }
+        lastAppliedActive = active;
     }
 
     private void pollLoop() {
@@ -152,14 +164,7 @@ public class BedtimeMonitorService extends Service {
                             .apply();
 
                         Log.i(TAG, "State active=" + active + " allowPowerControls=" + allowPowerControls + " deviceOwner=" + isDeviceOwner());
-                        if (isDeviceOwner()) {
-                            BedtimeOverlay.hide(this);
-                            if (active) showManagedLock();
-                            else hideManagedLock();
-                        } else {
-                            if (active && Settings.canDrawOverlays(this)) BedtimeOverlay.show(this);
-                            if (!active) BedtimeOverlay.hide(this);
-                        }
+                        applyState(active);
                     } else {
                         Log.w(TAG, "Non-200 response: " + code);
                     }
