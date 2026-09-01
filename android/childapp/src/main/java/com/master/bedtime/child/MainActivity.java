@@ -24,6 +24,7 @@ public class MainActivity extends Activity {
     private TextView deviceOwnerHelp;
     private Button permission;
     private Button start;
+    private Button batterySettings;
     private Button test;
     private Button restoreAccounts;
     private Button releaseDeviceOwner;
@@ -43,6 +44,7 @@ public class MainActivity extends Activity {
         Button continueSetup = findViewById(R.id.btnContinueSetup);
         permission = findViewById(R.id.btnOverlayPermission);
         start = findViewById(R.id.btnStartMonitor);
+        batterySettings = findViewById(R.id.btnBatterySettings);
         restoreAccounts = findViewById(R.id.btnRestoreAccounts);
         test = findViewById(R.id.btnTestOverlay);
         releaseDeviceOwner = findViewById(R.id.btnReleaseDeviceOwner);
@@ -68,6 +70,7 @@ public class MainActivity extends Activity {
         });
 
         start.setOnClickListener(v -> startMonitor());
+        batterySettings.setOnClickListener(v -> showBatterySettingsGuide());
         restoreAccounts.setOnClickListener(v -> showRestoreAccountsReminder());
         test.setOnClickListener(v -> testBedtime());
         releaseDeviceOwner.setOnClickListener(v -> confirmReleaseDeviceOwner());
@@ -114,26 +117,27 @@ public class MainActivity extends Activity {
         boolean owner = isDeviceOwner();
 
         if (!accountsConfirmed) {
-            setupStep.setText("STEP 1 OF 5 — Remove saved accounts");
+            setupStep.setText("STEP 1 OF 6 — Remove saved accounts");
             deviceOwnerStatus.setText("Device Owner: waiting for account preparation");
             deviceOwnerHelp.setText("Pagkatapos alisin ang accounts, bumalik dito at pindutin ang TAPOS NA — CONTINUE SETUP.");
         } else if (!owner) {
-            setupStep.setText("STEP 2 OF 5 — Activate Device Owner");
+            setupStep.setText("STEP 2 OF 6 — Activate Device Owner");
             deviceOwnerStatus.setText("Device Owner: NOT ACTIVE");
             deviceOwnerHelp.setText("Ikonekta ang phone sa PC at patakbuhin:\n\nadb shell dpm set-device-owner com.master.bedtime.child/.BedtimeDeviceAdminReceiver\n\nPag success, bumalik sa app. Automatic nitong makikita ang Device Owner status.");
         } else if (!setupComplete) {
-            setupStep.setText("STEP 3 OF 5 — Pair and start monitor");
+            setupStep.setText("STEP 3 OF 6 — Pair and start monitor");
             deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
-            deviceOwnerHelp.setText("Managed mode ready. Ilagay ang Parent/Worker backend at Child ID, pagkatapos pindutin ang START BEDTIME MONITOR.");
+            deviceOwnerHelp.setText("Managed mode ready. Ilagay ang Parent/Worker backend at Child ID, pagkatapos pindutin ang START BEDTIME MONITOR. Pagkatapos, buksan ang Battery / Background Settings at piliin ang Unrestricted / No restrictions / Allow background activity kung available.");
         } else {
-            setupStep.setText("STEP 5 OF 5 — Setup complete");
+            setupStep.setText("STEP 6 OF 6 — Setup complete");
             deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
-            deviceOwnerHelp.setText("Setup complete. Maaari mong palitan ang Backend URL o Child ID at pindutin ang SAVE / RESTART BEDTIME MONITOR.");
+            deviceOwnerHelp.setText("Setup complete. Panatilihing Unrestricted / No restrictions ang battery/background setting para mabilis ang remote Bedtime response kahit unplugged o screen off.");
         }
 
         permission.setVisibility(owner ? View.GONE : View.VISIBLE);
         start.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
         start.setText(setupComplete ? "SAVE / RESTART BEDTIME MONITOR" : "3. START BEDTIME MONITOR");
+        batterySettings.setEnabled(accountsConfirmed);
         restoreAccounts.setVisibility(setupComplete ? View.VISIBLE : View.GONE);
         test.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
         releaseDeviceOwner.setVisibility(owner ? View.VISIBLE : View.GONE);
@@ -175,6 +179,28 @@ public class MainActivity extends Activity {
         refreshSetupState();
         Toast.makeText(this, wasSetupComplete ? "Bedtime monitor settings saved." : "Bedtime monitor started.", Toast.LENGTH_LONG).show();
         if (!wasSetupComplete) showRestoreAccountsReminder();
+    }
+
+    private void showBatterySettingsGuide() {
+        new AlertDialog.Builder(this)
+            .setTitle("Battery / Background Settings")
+            .setMessage("Para mabilis ang remote BEDTIME ON/OFF kahit unplugged o screen off, hanapin ang Battery setting ng Bedtime app at piliin ang pinakamaluwag na option na available, gaya ng:\n\n• Unrestricted\n• No restrictions\n• Allow background activity\n• Don't optimize\n\nMagkakaiba ang pangalan depende sa phone brand.")
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("OPEN APP SETTINGS", (dialog, which) -> openAppBatterySettings())
+            .show();
+    }
+
+    private void openAppBatterySettings() {
+        Intent details = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
+        try {
+            startActivity(details);
+        } catch (Exception first) {
+            try {
+                startActivity(new Intent(Settings.ACTION_SETTINGS));
+            } catch (Exception ignored) {
+                Toast.makeText(this, "Buksan ang Settings > Apps > Bedtime > Battery.", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     private void testBedtime() {
