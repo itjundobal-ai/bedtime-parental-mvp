@@ -2,6 +2,7 @@ package com.master.bedtime.child;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -20,12 +21,15 @@ public class MainActivity extends Activity {
         EditText backend = findViewById(R.id.backendUrl);
         EditText child = findViewById(R.id.childId);
         TextView status = findViewById(R.id.status);
+        Button accounts = findViewById(R.id.btnAccountsSecurity);
         Button permission = findViewById(R.id.btnOverlayPermission);
         Button start = findViewById(R.id.btnStartMonitor);
         Button test = findViewById(R.id.btnTestOverlay);
 
         backend.setText(getSharedPreferences("cfg", MODE_PRIVATE).getString("backend", "http://10.0.2.2:8080"));
         child.setText(getSharedPreferences("cfg", MODE_PRIVATE).getString("child", "child-001"));
+
+        accounts.setOnClickListener(v -> showAccountPreparationReminder());
 
         permission.setOnClickListener(v -> {
             Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
@@ -55,5 +59,34 @@ public class MainActivity extends Activity {
             }
             BedtimeOverlay.show(this);
         });
+
+        if (!getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("account_reminder_seen", false)) {
+            showAccountPreparationReminder();
+        }
+    }
+
+    private void showAccountPreparationReminder() {
+        new AlertDialog.Builder(this)
+            .setTitle("Bago tayo magsimula")
+            .setMessage("Para tuloy-tuloy ang Device Owner setup, alisin muna ang mga naka-save na account sa device. Siguraduhing alam ninyo ang email/username at password ng inyong mga account bago alisin ang mga ito. Pagkatapos ng installation at setup, maaari ninyo silang idagdag muli.\n\nKung okay po sa inyo, pindutin ang button sa ibaba at dadalhin kayo diretso sa Accounts / Account & Security settings.")
+            .setNegativeButton("Hindi muna", null)
+            .setPositiveButton("OKAY, PUNTA SA ACCOUNTS", (dialog, which) -> {
+                getSharedPreferences("cfg", MODE_PRIVATE).edit().putBoolean("account_reminder_seen", true).apply();
+                openAccountsSettings();
+            })
+            .show();
+    }
+
+    private void openAccountsSettings() {
+        Intent i = new Intent(Settings.ACTION_SYNC_SETTINGS);
+        try {
+            startActivity(i);
+        } catch (Exception first) {
+            try {
+                startActivity(new Intent(Settings.ACTION_SETTINGS));
+            } catch (Exception ignored) {
+                Toast.makeText(this, "Buksan ang Settings > Accounts / Passwords & accounts.", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 }
