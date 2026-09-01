@@ -10,6 +10,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
 
@@ -23,10 +25,12 @@ import java.net.URL;
 public class BedtimeMonitorService extends Service {
     private volatile boolean running;
     private Thread worker;
+    private PowerManager.WakeLock wakeLock;
     private static final String CHANNEL = "bedtime_monitor";
     private static final String TAG = "BedtimeMonitor";
     private static final long POLL_INTERVAL_MS = 1000L;
     private Boolean lastAppliedActive = null;
+    private long lastPollStartedAt = 0L;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -40,10 +44,40 @@ public class BedtimeMonitorService extends Service {
             .setContentIntent(pi)
             .setOngoing(true).build();
         startForeground(7, n);
+
+        acquireMonitorWakeLock();
+
         running = true;
-        Log.i(TAG, "Service started");
+        Log.i(TAG, "Service started; sticky=true wakeLock=" + (wakeLock != null && wakeLock.isHeld()));
         worker = new Thread(this::pollLoop, "bedtime-poll");
         worker.start();
+    }
+
+    private void acquireMonitorWakeLock() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm == null) {
+                Log.w(TAG, "PowerManager unavailable; monitor wake lock not acquired");
+                return;
+            }
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, getPackageName() + ":BedtimeMonitor");
+            wakeLock.setReferenceCounted(false);
+            wakeLock.acquire();
+            Log.i(TAG, "Partial wake lock acquired");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to acquire partial wake lock", e);
+        }
+    }
+
+    private void releaseMonitorWakeLock() {
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) {
+                wakeLock.release();
+                Log.i(TAG, "Partial wake lock released");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to release partial wake lock", e);
+        }
     }
 
     private void createChannel() {
@@ -121,6 +155,15 @@ public class BedtimeMonitorService extends Service {
 
     private void pollLoop() {
         while (running) {
+            long now = SystemClock.elapsedRealtime();
+            if (lastPollStartedAt > 0L) {
+                long gap = now - lastPollStartedAt;
+                if (gap > 5000L) {
+                    Log.w(TAG, "Poll wake gap detected: " + gap + "ms");
+                }
+            }
+            lastPollStartedAt = now;
+
             HttpURLConnection c = null;
             try {
                 SharedPreferences p = getSharedPreferences("cfg", MODE_PRIVATE);
@@ -186,11 +229,15 @@ public class BedtimeMonitorService extends Service {
         }
     }
 
-    @Override public int onStartCommand(Intent intent, int flags, int startId) { return START_STICKY; }
+    @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.i(TAG, "onStartCommand startId=" + startId + " sticky=true");
+        return START_STICKY;
+    }
 
     @Override public void onDestroy() {
         running = false;
         if (worker != null) worker.interrupt();
+        releaseMonitorWakeLock();
         Log.i(TAG, "Service destroyed");
         super.onDestroy();
     }
