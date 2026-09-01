@@ -5,7 +5,8 @@ function json(data, status = 200) {
       'content-type': 'application/json; charset=utf-8',
       'access-control-allow-origin': '*',
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'content-type,x-parent-key'
+      'access-control-allow-headers': 'content-type,x-parent-key',
+      'cache-control': 'no-store'
     }
   });
 }
@@ -44,32 +45,27 @@ async function setBedtime(active){
  statusEl.textContent=active?'Sending Bedtime ON…':'Sending Bedtime OFF…';
  try{
   const headers={'content-type':'application/json'}; if(key.value) headers['x-parent-key']=key.value;
-  const r=await fetch('/api/children/'+encodeURIComponent(id)+'/bedtime',{method:'POST',headers,body:JSON.stringify({active,allowPowerControls:allowPower.checked})});
+  const r=await fetch('/api/children/'+encodeURIComponent(id)+'/bedtime',{method:'POST',headers,body:JSON.stringify({active,allowPowerControls:allowPower.checked}),cache:'no-store'});
   const d=await r.json(); if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
   statusEl.innerHTML=(active?'<span class="active">🌙 Bedtime is ON</span>':'<span class="inactive">✓ Bedtime is OFF</span>')+'<div class="hint">Power controls: '+(d.allowPowerControls?'ALLOWED':'NOT ALLOWED')+'</div>';
  }catch(e){statusEl.textContent='Error: '+e.message;}
 }
 </script></body></html>`;
-  return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 }
 
-export default {
-  async fetch(request, env) {
-    if (request.method === 'OPTIONS') return json({ ok: true });
+export class BedtimeState {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
+
+  async fetch(request) {
     const url = new URL(request.url);
-
-    if (url.pathname === '/' && request.method === 'GET') return dashboard();
-    if (url.pathname === '/health') return json({ ok: true, service: 'bedtime-parental-worker' });
-
-    const match = url.pathname.match(/^\/api\/children\/([^/]+)\/bedtime$/);
-    if (!match) return json({ error: 'not found' }, 404);
-
-    const childId = decodeURIComponent(match[1]);
-    if (!/^[A-Za-z0-9._-]{1,80}$/.test(childId)) return json({ error: 'invalid childId' }, 400);
-    const key = `bedtime:${childId}`;
+    const childId = url.searchParams.get('childId') || '';
 
     if (request.method === 'GET') {
-      const stored = await env.BEDTIME_STATE.get(key, { type: 'json' });
+      const stored = await this.state.storage.get('state');
       return json({
         childId,
         active: stored?.active === true,
@@ -79,6 +75,36 @@ export default {
     }
 
     if (request.method === 'POST') {
+      const body = await request.json();
+      const previous = await this.state.storage.get('state');
+      const next = {
+        active: body.active === true,
+        allowPowerControls: body.allowPowerControls === true || (body.allowPowerControls === undefined && previous?.allowPowerControls === true),
+        updatedAt: new Date().toISOString()
+      };
+      await this.state.storage.put('state', next);
+      return json({ ok: true, childId, ...next });
+    }
+
+    return json({ error: 'method not allowed' }, 405);
+  }
+}
+
+export default {
+  async fetch(request, env) {
+    if (request.method === 'OPTIONS') return json({ ok: true });
+    const url = new URL(request.url);
+
+    if (url.pathname === '/' && request.method === 'GET') return dashboard();
+    if (url.pathname === '/health') return json({ ok: true, service: 'bedtime-parental-worker', storage: 'durable-object' });
+
+    const match = url.pathname.match(/^\/api\/children\/([^/]+)\/bedtime$/);
+    if (!match) return json({ error: 'not found' }, 404);
+
+    const childId = decodeURIComponent(match[1]);
+    if (!/^[A-Za-z0-9._-]{1,80}$/.test(childId)) return json({ error: 'invalid childId' }, 400);
+
+    if (request.method === 'POST') {
       if (env.PARENT_API_KEY) {
         const provided = request.headers.get('x-parent-key') || '';
         if (provided !== env.PARENT_API_KEY) return json({ error: 'unauthorized' }, 401);
@@ -86,15 +112,26 @@ export default {
       let body;
       try { body = await request.json(); } catch { return json({ error: 'invalid json' }, 400); }
       if (typeof body?.active !== 'boolean') return json({ error: 'active must be boolean' }, 400);
-      if (body.allowPowerControls !== undefined && typeof body.allowPowerControls !== 'boolean') return json({ error: 'allowPowerControls must be boolean' }, 400);
-      const previous = await env.BEDTIME_STATE.get(key, { type: 'json' });
-      const state = {
-        active: body.active,
-        allowPowerControls: body.allowPowerControls === true || (body.allowPowerControls === undefined && previous?.allowPowerControls === true),
-        updatedAt: new Date().toISOString()
-      };
-      await env.BEDTIME_STATE.put(key, JSON.stringify(state));
-      return json({ ok: true, childId, ...state });
+      if (body.allowPowerControls !== undefined && typeof body.allowPowerControls !== 'boolean') {
+        return json({ error: 'allowPowerControls must be boolean' }, 400);
+      }
+
+      const id = env.BEDTIME_STATE_DO.idFromName(childId);
+      const stub = env.BEDTIME_STATE_DO.get(id);
+      return stub.fetch(new Request(`https://bedtime-state.internal/state?childId=${encodeURIComponent(childId)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body)
+      }));
+    }
+
+    if (request.method === 'GET') {
+      const id = env.BEDTIME_STATE_DO.idFromName(childId);
+      const stub = env.BEDTIME_STATE_DO.get(id);
+      return stub.fetch(new Request(`https://bedtime-state.internal/state?childId=${encodeURIComponent(childId)}`, {
+        method: 'GET',
+        headers: { 'cache-control': 'no-store' }
+      }));
     }
 
     return json({ error: 'method not allowed' }, 405);
