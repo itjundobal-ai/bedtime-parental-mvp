@@ -1,5 +1,6 @@
 package com.master.bedtime.child;
 
+import android.app.AlarmManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -51,6 +52,41 @@ public class BedtimeMonitorService extends Service {
         Log.i(TAG, "Service started; sticky=true wakeLock=" + (wakeLock != null && wakeLock.isHeld()));
         worker = new Thread(this::pollLoop, "bedtime-poll");
         worker.start();
+    }
+
+    private boolean shouldStayRunning() {
+        String role = getSharedPreferences("app_role", MODE_PRIVATE).getString("role", "");
+        boolean setupComplete = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
+        return "child".equals(role) && setupComplete;
+    }
+
+    private void scheduleMonitorRestart(String reason) {
+        if (!shouldStayRunning()) {
+            Log.i(TAG, "Restart not scheduled; monitor is not configured/enabled");
+            return;
+        }
+        try {
+            Intent restart = new Intent(this, BootReceiver.class)
+                .setAction(BootReceiver.ACTION_RESTART_MONITOR);
+            PendingIntent pending = PendingIntent.getBroadcast(
+                this,
+                7001,
+                restart,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            AlarmManager alarm = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+            if (alarm != null) {
+                long when = System.currentTimeMillis() + 3000L;
+                if (Build.VERSION.SDK_INT >= 23) {
+                    alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pending);
+                } else {
+                    alarm.set(AlarmManager.RTC_WAKEUP, when, pending);
+                }
+                Log.w(TAG, "Monitor restart scheduled after " + reason);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Unable to schedule monitor restart after " + reason, e);
+        }
     }
 
     private void acquireMonitorWakeLock() {
@@ -241,11 +277,18 @@ public class BedtimeMonitorService extends Service {
         return START_STICKY;
     }
 
+    @Override public void onTaskRemoved(Intent rootIntent) {
+        Log.w(TAG, "App task removed; keeping child monitor alive");
+        scheduleMonitorRestart("task removal");
+        super.onTaskRemoved(rootIntent);
+    }
+
     @Override public void onDestroy() {
         running = false;
         if (worker != null) worker.interrupt();
         releaseMonitorWakeLock();
-        Log.i(TAG, "Service destroyed");
+        Log.w(TAG, "Service destroyed");
+        scheduleMonitorRestart("service destruction");
         super.onDestroy();
     }
 
