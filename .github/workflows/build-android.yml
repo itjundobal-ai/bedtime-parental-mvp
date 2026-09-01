@@ -1,4 +1,4 @@
-name: Build Android APKs
+name: Build Child APK
 
 on:
   workflow_dispatch:
@@ -35,14 +35,8 @@ jobs:
         with:
           gradle-version: '9.1.0'
 
-      - name: Build Parent and Child APKs
-        run: gradle :parentapp:assembleDebug :childapp:assembleDebug --stacktrace
-
-      - name: Upload Parent APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: bedtime-parent-apk
-          path: android/parentapp/build/outputs/apk/debug/parentapp-debug.apk
+      - name: Build Child APK
+        run: gradle :childapp:assembleDebug --stacktrace
 
       - name: Upload Child APK
         uses: actions/upload-artifact@v4
