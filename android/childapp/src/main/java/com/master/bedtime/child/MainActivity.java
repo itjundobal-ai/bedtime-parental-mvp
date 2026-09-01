@@ -48,7 +48,12 @@ public class MainActivity extends Activity {
         releaseDeviceOwner = findViewById(R.id.btnReleaseDeviceOwner);
         dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
 
-        backend.setText(getSharedPreferences("cfg", MODE_PRIVATE).getString("backend", "http://10.0.2.2:8080"));
+        String savedBackend = getSharedPreferences("cfg", MODE_PRIVATE).getString("backend", "https://bedtime-parental-api.itjundobal.workers.dev");
+        String normalizedBackend = normalizeBackend(savedBackend);
+        backend.setText(normalizedBackend);
+        if (!normalizedBackend.equals(savedBackend)) {
+            getSharedPreferences("cfg", MODE_PRIVATE).edit().putString("backend", normalizedBackend).apply();
+        }
         child.setText(getSharedPreferences("cfg", MODE_PRIVATE).getString("child", "child-001"));
 
         accounts.setOnClickListener(v -> showAccountPreparationReminder());
@@ -80,6 +85,27 @@ public class MainActivity extends Activity {
 
     private boolean isDeviceOwner() {
         return dpm != null && dpm.isDeviceOwnerApp(getPackageName());
+    }
+
+    private String normalizeBackend(String value) {
+        if (value == null) return "";
+        String raw = value.trim();
+        while (raw.endsWith("/")) raw = raw.substring(0, raw.length() - 1);
+        if (raw.isEmpty()) return "";
+
+        boolean hadHttps = raw.toLowerCase().contains("https://");
+        boolean hadHttp = raw.toLowerCase().contains("http://");
+        while (raw.toLowerCase().startsWith("http://") || raw.toLowerCase().startsWith("https://")) {
+            if (raw.toLowerCase().startsWith("https://")) raw = raw.substring(8);
+            else raw = raw.substring(7);
+        }
+
+        if (raw.toLowerCase().endsWith(".workers.dev") || raw.toLowerCase().contains(".workers.dev/")) {
+            return "https://" + raw;
+        }
+        if (hadHttps) return "https://" + raw;
+        if (hadHttp) return "http://" + raw;
+        return "https://" + raw;
     }
 
     private void refreshSetupState() {
@@ -129,12 +155,13 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);
         }
 
-        String backendValue = backend.getText().toString().trim().replaceAll("/$", "");
+        String backendValue = normalizeBackend(backend.getText().toString());
         String childValue = child.getText().toString().trim();
         if (backendValue.isEmpty() || childValue.isEmpty()) {
             Toast.makeText(this, "Ilagay muna ang Backend URL at Child ID.", Toast.LENGTH_LONG).show();
             return;
         }
+        backend.setText(backendValue);
 
         boolean wasSetupComplete = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
         getSharedPreferences("cfg", MODE_PRIVATE).edit()
