@@ -26,6 +26,7 @@ public class BedtimeMonitorService extends Service {
     private Thread worker;
     private static final String CHANNEL = "bedtime_monitor";
     private static final String TAG = "BedtimeMonitor";
+    private static final long POLL_INTERVAL_MS = 1000L;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -55,6 +56,27 @@ public class BedtimeMonitorService extends Service {
     private boolean isDeviceOwner() {
         DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
         return dpm != null && dpm.isDeviceOwnerApp(getPackageName());
+    }
+
+    private String normalizeBackend(String value) {
+        if (value == null) return "";
+        String raw = value.trim();
+        while (raw.endsWith("/")) raw = raw.substring(0, raw.length() - 1);
+        if (raw.isEmpty()) return "";
+
+        boolean hadHttps = raw.toLowerCase().contains("https://");
+        boolean hadHttp = raw.toLowerCase().contains("http://");
+        while (raw.toLowerCase().startsWith("http://") || raw.toLowerCase().startsWith("https://")) {
+            if (raw.toLowerCase().startsWith("https://")) raw = raw.substring(8);
+            else raw = raw.substring(7);
+        }
+
+        if (raw.toLowerCase().endsWith(".workers.dev") || raw.toLowerCase().contains(".workers.dev/")) {
+            return "https://" + raw;
+        }
+        if (hadHttps) return "https://" + raw;
+        if (hadHttp) return "http://" + raw;
+        return "https://" + raw;
     }
 
     private void showManagedLock() {
@@ -90,10 +112,16 @@ public class BedtimeMonitorService extends Service {
             HttpURLConnection c = null;
             try {
                 SharedPreferences p = getSharedPreferences("cfg", MODE_PRIVATE);
-                String base = p.getString("backend", "");
+                String savedBase = p.getString("backend", "");
+                String base = normalizeBackend(savedBase);
                 String child = p.getString("child", "child-001");
-                Log.i(TAG, "Poll config backend=" + base + " child=" + child);
 
+                if (!base.equals(savedBase)) {
+                    p.edit().putString("backend", base).apply();
+                    Log.i(TAG, "Normalized backend URL to " + base);
+                }
+
+                Log.i(TAG, "Poll config backend=" + base + " child=" + child);
                 if (!base.isEmpty()) {
                     URL url = new URL(base + "/api/children/" + child + "/bedtime");
                     Log.i(TAG, "GET " + url);
@@ -145,7 +173,7 @@ public class BedtimeMonitorService extends Service {
             }
 
             try {
-                Thread.sleep(3000);
+                Thread.sleep(POLL_INTERVAL_MS);
             } catch (InterruptedException e) {
                 Log.i(TAG, "Poll loop interrupted");
                 return;
