@@ -102,11 +102,12 @@ public class MainActivity extends Activity {
         } else {
             setupStep.setText("STEP 5 OF 5 — Setup complete");
             deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
-            deviceOwnerHelp.setText("Setup complete. Maaari nang ibalik ng parent ang mga account na inalis kanina.");
+            deviceOwnerHelp.setText("Setup complete. Maaari mong palitan ang Backend URL o Child ID at pindutin ang SAVE / RESTART BEDTIME MONITOR.");
         }
 
         permission.setVisibility(owner ? View.GONE : View.VISIBLE);
-        start.setEnabled(accountsConfirmed && !setupComplete && (owner || Settings.canDrawOverlays(this)));
+        start.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
+        start.setText(setupComplete ? "SAVE / RESTART BEDTIME MONITOR" : "3. START BEDTIME MONITOR");
         restoreAccounts.setVisibility(setupComplete ? View.VISIBLE : View.GONE);
         test.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
         releaseDeviceOwner.setVisibility(owner ? View.VISIBLE : View.GONE);
@@ -135,6 +136,7 @@ public class MainActivity extends Activity {
             return;
         }
 
+        boolean wasSetupComplete = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
         getSharedPreferences("cfg", MODE_PRIVATE).edit()
             .putString("backend", backendValue)
             .putString("child", childValue)
@@ -144,7 +146,8 @@ public class MainActivity extends Activity {
         Intent service = new Intent(this, BedtimeMonitorService.class);
         startForegroundService(service);
         refreshSetupState();
-        showRestoreAccountsReminder();
+        Toast.makeText(this, wasSetupComplete ? "Bedtime monitor settings saved." : "Bedtime monitor started.", Toast.LENGTH_LONG).show();
+        if (!wasSetupComplete) showRestoreAccountsReminder();
     }
 
     private void testBedtime() {
