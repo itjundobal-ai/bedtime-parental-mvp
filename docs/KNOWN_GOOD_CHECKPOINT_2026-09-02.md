@@ -78,6 +78,37 @@ Healthy online polling shows:
 4. Unlock/lock state transitions were adjusted so commands are not needlessly relaunched every poll and unlock is sent even if Android reports Lock Task already off.
 5. Phones may delay remote reaction if Android battery/background management suspends the monitor; set the Bedtime app to Unrestricted / No restrictions / Allow background activity.
 
+## Important breakthrough — strong forced Bedtime lock
+### Initial assumption
+At an earlier stage, a true parent-controlled forced lock looked impractical because ordinary Android overlays/activities can usually be escaped with Back, Recents, Home, system UI, or other navigation, and Android does not allow normal apps to intercept every system control.
+
+### What changed the answer
+The workable solution was not a stronger overlay. The solution was to provision the child app as **Device Owner** and use Android **Lock Task / managed kiosk mode** for the Bedtime activity.
+
+### Proven solution
+- Provision the Bedtime app as Device Owner.
+- Allow the package for Lock Task with `DevicePolicyManager.setLockTaskPackages(...)`.
+- Start `BedtimeLockActivity` and call `startLockTask()` when Bedtime becomes active.
+- Keep Back disabled and hide status/navigation system UI while managed Bedtime is active.
+- Use `LOCK_TASK_FEATURE_NONE` where supported so the normal on-screen global power/restart menu is suppressed during Bedtime.
+- The physical power button still remains usable for screen off/on; physical forced reboot cannot be reliably blocked by an Android app.
+- If the device reboots while the backend still reports Bedtime active, the boot/monitor flow should restore the managed lock.
+
+### Verification
+This strong managed lock was tested successfully on the child phone: ordinary Back/Recents/swipe navigation did not dismiss Bedtime, and remote parent commands could later unlock it.
+
+### Lesson for future troubleshooting
+Do not stop at an early conclusion of "not possible" when the limitation only applies to a normal app permission level. Re-check whether Android has an officially supported managed-device capability such as Device Owner, Device Policy Manager, or Lock Task that changes what is possible. Document the exact limitation and the elevated-management solution separately.
+
+## Troubleshooting record format going forward
+For every meaningful issue, record:
+- **Problem / initial assumption** — what appeared impossible or broken.
+- **Symptom / logs** — exact behavior or error message.
+- **Root cause** — what actually caused it.
+- **Fix** — exact code change, setting, or command.
+- **Verification** — how the fix was proven on a real device.
+- **Rollback point** — branch/commit to return to if a later change breaks it.
+
 ## Next planned milestone
 Build ONE Android APK with a first-launch role selector:
 - `PARENT` mode: native in-app dashboard, child/device selection, Bedtime ON/OFF.
