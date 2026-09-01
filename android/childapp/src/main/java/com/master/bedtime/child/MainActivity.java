@@ -26,6 +26,7 @@ public class MainActivity extends Activity {
     private Button start;
     private Button test;
     private Button restoreAccounts;
+    private Button releaseDeviceOwner;
     private DevicePolicyManager dpm;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -44,6 +45,7 @@ public class MainActivity extends Activity {
         start = findViewById(R.id.btnStartMonitor);
         restoreAccounts = findViewById(R.id.btnRestoreAccounts);
         test = findViewById(R.id.btnTestOverlay);
+        releaseDeviceOwner = findViewById(R.id.btnReleaseDeviceOwner);
         dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
 
         backend.setText(getSharedPreferences("cfg", MODE_PRIVATE).getString("backend", "http://10.0.2.2:8080"));
@@ -63,6 +65,7 @@ public class MainActivity extends Activity {
         start.setOnClickListener(v -> startMonitor());
         restoreAccounts.setOnClickListener(v -> showRestoreAccountsReminder());
         test.setOnClickListener(v -> testBedtime());
+        releaseDeviceOwner.setOnClickListener(v -> confirmReleaseDeviceOwner());
 
         if (!getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("account_reminder_seen", false)) {
             showAccountPreparationReminder();
@@ -106,6 +109,7 @@ public class MainActivity extends Activity {
         start.setEnabled(accountsConfirmed && !setupComplete && (owner || Settings.canDrawOverlays(this)));
         restoreAccounts.setVisibility(setupComplete ? View.VISIBLE : View.GONE);
         test.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
+        releaseDeviceOwner.setVisibility(owner ? View.VISIBLE : View.GONE);
 
         if (setupComplete) {
             status.setText(owner ? "READY — Managed Bedtime Monitor running" : "READY — Fallback Bedtime Monitor running");
@@ -155,6 +159,46 @@ public class MainActivity extends Activity {
             return;
         }
         BedtimeOverlay.show(this);
+    }
+
+    private void confirmReleaseDeviceOwner() {
+        if (!isDeviceOwner()) {
+            refreshSetupState();
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+            .setTitle("TEST ONLY — Release Device Owner?")
+            .setMessage("Gamitin lang ito sa test device. Tatanggalin nito ang Device Owner role para ma-uninstall o ma-reprovision ang app. Hindi nito ginagawa ang factory reset.")
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("RELEASE DEVICE OWNER", (dialog, which) -> releaseDeviceOwnerForTesting())
+            .show();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void releaseDeviceOwnerForTesting() {
+        if (dpm == null || !dpm.isDeviceOwnerApp(getPackageName())) return;
+
+        try {
+            getSharedPreferences("cfg", MODE_PRIVATE).edit()
+                .putBoolean("last_active", false)
+                .putBoolean("setup_complete", false)
+                .apply();
+            stopService(new Intent(this, BedtimeMonitorService.class));
+            try {
+                Intent unlock = new Intent(this, BedtimeLockActivity.class);
+                unlock.putExtra("bedtime_off", true);
+                startActivity(unlock);
+            } catch (Exception ignored) {}
+
+            dpm.clearDeviceOwnerApp(getPackageName());
+            Toast.makeText(this, "Device Owner released for testing.", Toast.LENGTH_LONG).show();
+        } catch (SecurityException e) {
+            Toast.makeText(this, "Android blocked Device Owner release on this device.", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Release failed: " + e.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
+        }
+        refreshSetupState();
     }
 
     private void showAccountPreparationReminder() {
