@@ -30,6 +30,7 @@ public class BedtimeMonitorService extends Service {
     private static final String CHANNEL = "bedtime_monitor";
     private static final String TAG = "BedtimeMonitor";
     private static final long POLL_INTERVAL_MS = 1000L;
+    private static final long RESTART_DELAY_MS = 3000L;
     private Boolean lastAppliedActive = null;
     private long lastPollStartedAt = 0L;
 
@@ -47,11 +48,17 @@ public class BedtimeMonitorService extends Service {
         startForeground(7, n);
 
         acquireMonitorWakeLock();
-
         running = true;
         Log.i(TAG, "Service started; sticky=true wakeLock=" + (wakeLock != null && wakeLock.isHeld()));
+        startWorkerIfNeeded();
+    }
+
+    private synchronized void startWorkerIfNeeded() {
+        if (!running) return;
+        if (worker != null && worker.isAlive()) return;
         worker = new Thread(this::pollLoop, "bedtime-poll");
         worker.start();
+        Log.i(TAG, "Monitor worker started");
     }
 
     private boolean shouldStayRunning() {
@@ -70,13 +77,23 @@ public class BedtimeMonitorService extends Service {
             PendingIntent pending = PendingIntent.getBroadcast(this, 7001, restart, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             AlarmManager alarm = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
             if (alarm != null) {
-                long when = System.currentTimeMillis() + 3000L;
+                long when = System.currentTimeMillis() + RESTART_DELAY_MS;
                 if (Build.VERSION.SDK_INT >= 23) alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pending);
                 else alarm.set(AlarmManager.RTC_WAKEUP, when, pending);
-                Log.w(TAG, "Monitor restart scheduled after " + reason);
+                Log.w(TAG, "Monitor restart scheduled after " + reason + " in " + RESTART_DELAY_MS + "ms");
             }
         } catch (Exception e) {
             Log.e(TAG, "Unable to schedule monitor restart after " + reason, e);
+        }
+    }
+
+    private void requestImmediateRestart(String reason) {
+        if (!shouldStayRunning()) return;
+        try {
+            Log.w(TAG, "Requesting immediate monitor restart: " + reason);
+            ContextCompatCompat.startForegroundService(this, new Intent(this, BedtimeMonitorService.class));
+        } catch (Exception e) {
+            Log.w(TAG, "Immediate restart unavailable; alarm fallback will be used: " + e.getMessage());
         }
     }
 
@@ -220,10 +237,20 @@ public class BedtimeMonitorService extends Service {
         }
     }
 
-    @Override public int onStartCommand(Intent intent, int flags, int startId) { return START_STICKY; }
+    @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        running = true;
+        startWorkerIfNeeded();
+        return START_STICKY;
+    }
 
     @Override public void onTaskRemoved(Intent rootIntent) {
+        Log.w(TAG, "App task removed; keeping monitor alive");
         scheduleMonitorRestart("task removal");
+        try {
+            if (shouldStayRunning()) ContextCompatCompat.startForegroundService(this, new Intent(this, BedtimeMonitorService.class));
+        } catch (Exception e) {
+            Log.w(TAG, "Task-removal immediate restart failed: " + e.getMessage());
+        }
         super.onTaskRemoved(rootIntent);
     }
 
@@ -236,4 +263,11 @@ public class BedtimeMonitorService extends Service {
     }
 
     @Override public IBinder onBind(Intent intent) { return null; }
+
+    private static final class ContextCompatCompat {
+        static void startForegroundService(Context context, Intent intent) {
+            if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent);
+            else context.startService(intent);
+        }
+    }
 }
