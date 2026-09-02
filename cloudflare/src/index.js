@@ -5,53 +5,41 @@ function json(data, status = 200) {
       'content-type': 'application/json; charset=utf-8',
       'access-control-allow-origin': '*',
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'content-type,x-parent-key',
+      'access-control-allow-headers': 'content-type,x-parent-key,x-parent-token,x-child-token',
       'cache-control': 'no-store'
     }
   });
 }
 
 function dashboard() {
-  const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Bedtime Parent Control</title>
-<style>
-body{font-family:Arial,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:grid;place-items:center}
-.card{width:min(92vw,440px);background:#111827;padding:28px;border-radius:22px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
-h1{margin:0 0 8px;font-size:28px}.muted{color:#94a3b8;margin-bottom:24px}
-label{display:block;margin:14px 0 6px;font-size:14px;color:#cbd5e1}input{width:100%;box-sizing:border-box;padding:14px;border-radius:12px;border:1px solid #334155;background:#0b1220;color:white;font-size:16px}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}button{border:0;border-radius:14px;padding:16px;font-size:17px;font-weight:700;cursor:pointer}.on{background:#7c3aed;color:white}.off{background:#334155;color:white}
-.toggle{display:flex;align-items:center;gap:10px;margin-top:18px;padding:14px;border-radius:12px;background:#0b1220}.toggle input{width:auto;transform:scale(1.25)}.toggle label{margin:0;color:#e2e8f0}.hint{font-size:12px;color:#94a3b8;margin-top:6px}
-.status{margin-top:18px;padding:14px;border-radius:12px;background:#0b1220;color:#cbd5e1;min-height:20px}.active{color:#fbbf24;font-weight:700}.inactive{color:#86efac;font-weight:700}
-</style>
-</head>
-<body><main class="card">
-<h1>🌙 Bedtime Control</h1><div class="muted">Parent web dashboard</div>
-<label>Child ID</label><input id="child" value="child-001" autocomplete="off" />
-<label>Parent Key <span style="color:#64748b">(if enabled)</span></label><input id="key" type="password" placeholder="Optional" />
-<div class="toggle"><input id="allowPower" type="checkbox" /><div><label for="allowPower">Allow power controls during Bedtime</label><div class="hint">Parent-controlled setting. In managed/kiosk mode this will allow Android global power/restart controls.</div></div></div>
-<div class="row"><button class="on" onclick="setBedtime(true)">BEDTIME ON</button><button class="off" onclick="setBedtime(false)">BEDTIME OFF</button></div>
-<div id="status" class="status">Ready</div>
-</main>
-<script>
-const child=document.getElementById('child'), key=document.getElementById('key'), allowPower=document.getElementById('allowPower'), statusEl=document.getElementById('status');
-child.value=localStorage.getItem('childId')||'child-001'; key.value=localStorage.getItem('parentKey')||''; allowPower.checked=localStorage.getItem('allowPowerControls')==='true';
-async function setBedtime(active){
- const id=child.value.trim(); if(!id){statusEl.textContent='Enter Child ID';return;}
- localStorage.setItem('childId',id); localStorage.setItem('parentKey',key.value); localStorage.setItem('allowPowerControls',String(allowPower.checked));
- statusEl.textContent=active?'Sending Bedtime ON…':'Sending Bedtime OFF…';
- try{
-  const headers={'content-type':'application/json'}; if(key.value) headers['x-parent-key']=key.value;
-  const r=await fetch('/api/children/'+encodeURIComponent(id)+'/bedtime',{method:'POST',headers,body:JSON.stringify({active,allowPowerControls:allowPower.checked}),cache:'no-store'});
-  const d=await r.json(); if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
-  statusEl.innerHTML=(active?'<span class="active">🌙 Bedtime is ON</span>':'<span class="inactive">✓ Bedtime is OFF</span>')+'<div class="hint">Power controls: '+(d.allowPowerControls?'ALLOWED':'NOT ALLOWED')+'</div>';
- }catch(e){statusEl.textContent='Error: '+e.message;}
-}
-</script></body></html>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bedtime Parent Control</title></head><body><h1>Bedtime Parent Control</h1><p>Use the Android Parent dashboard for secure pairing and controls.</p></body></html>`;
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+}
+
+function randomToken(bytes = 32) {
+  const data = new Uint8Array(bytes);
+  crypto.getRandomValues(data);
+  let binary = '';
+  for (const b of data) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function randomPairCode() {
+  const data = new Uint32Array(1);
+  crypto.getRandomValues(data);
+  return String(100000 + (data[0] % 900000));
+}
+
+async function sha256(value) {
+  const bytes = new TextEncoder().encode(value || '');
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function tokenMatches(value, expectedHash) {
+  if (!expectedHash) return false;
+  if (!value) return false;
+  return (await sha256(value)) === expectedHash;
 }
 
 export class BedtimeState {
@@ -64,30 +52,100 @@ export class BedtimeState {
     const url = new URL(request.url);
     const childId = url.searchParams.get('childId') || '';
 
-    if (request.method === 'GET') {
-      const stored = await this.state.storage.get('state');
-      return json({
-        childId,
-        active: stored?.active === true,
-        allowPowerControls: stored?.allowPowerControls === true,
-        updatedAt: stored?.updatedAt || null
-      });
+    if (url.pathname === '/state') {
+      if (request.method === 'GET') {
+        const stored = await this.state.storage.get('state');
+        const credentials = await this.state.storage.get('credentials');
+        return json({
+          childId,
+          active: stored?.active === true,
+          allowPowerControls: stored?.allowPowerControls === true,
+          updatedAt: stored?.updatedAt || null,
+          paired: credentials?.paired === true
+        });
+      }
+
+      if (request.method === 'POST') {
+        const body = await request.json();
+        const previous = await this.state.storage.get('state');
+        const next = {
+          active: body.active === true,
+          allowPowerControls: body.allowPowerControls === true || (body.allowPowerControls === undefined && previous?.allowPowerControls === true),
+          updatedAt: new Date().toISOString()
+        };
+        await this.state.storage.put('state', next);
+        return json({ ok: true, childId, ...next });
+      }
     }
 
-    if (request.method === 'POST') {
-      const body = await request.json();
-      const previous = await this.state.storage.get('state');
-      const next = {
-        active: body.active === true,
-        allowPowerControls: body.allowPowerControls === true || (body.allowPowerControls === undefined && previous?.allowPowerControls === true),
-        updatedAt: new Date().toISOString()
-      };
-      await this.state.storage.put('state', next);
-      return json({ ok: true, childId, ...next });
+    if (url.pathname === '/credentials') {
+      if (request.method === 'GET') {
+        const credentials = await this.state.storage.get('credentials');
+        return json({ childId, credentials: credentials || null });
+      }
+      if (request.method === 'POST') {
+        const body = await request.json();
+        const current = await this.state.storage.get('credentials');
+        const next = {
+          childTokenHash: body.childTokenHash || current?.childTokenHash || null,
+          parentTokenHash: body.parentTokenHash !== undefined ? body.parentTokenHash : (current?.parentTokenHash || null),
+          paired: body.paired === true,
+          pairedAt: body.paired === true ? (body.pairedAt || new Date().toISOString()) : (current?.pairedAt || null)
+        };
+        await this.state.storage.put('credentials', next);
+        return json({ ok: true, childId });
+      }
+    }
+
+    if (url.pathname === '/pair') {
+      if (request.method === 'GET') {
+        const pending = await this.state.storage.get('pair');
+        if (!pending) return json({ error: 'pairing code not found' }, 404);
+        return json(pending);
+      }
+      if (request.method === 'POST') {
+        const body = await request.json();
+        await this.state.storage.put('pair', body);
+        return json({ ok: true });
+      }
+      if (request.method === 'DELETE') {
+        await this.state.storage.delete('pair');
+        return json({ ok: true });
+      }
     }
 
     return json({ error: 'method not allowed' }, 405);
   }
+}
+
+async function childStub(env, childId) {
+  const id = env.BEDTIME_STATE_DO.idFromName(childId);
+  return env.BEDTIME_STATE_DO.get(id);
+}
+
+async function getCredentials(env, childId) {
+  const stub = await childStub(env, childId);
+  const response = await stub.fetch(new Request(`https://bedtime-state.internal/credentials?childId=${encodeURIComponent(childId)}`, { method: 'GET' }));
+  const data = await response.json();
+  return data.credentials || null;
+}
+
+async function authorizedForRead(request, credentials) {
+  if (!credentials?.paired) return true;
+  const parentToken = request.headers.get('x-parent-token') || '';
+  const childToken = request.headers.get('x-child-token') || '';
+  return await tokenMatches(parentToken, credentials.parentTokenHash) || await tokenMatches(childToken, credentials.childTokenHash);
+}
+
+async function authorizedParent(request, credentials, env) {
+  if (credentials?.paired) {
+    const parentToken = request.headers.get('x-parent-token') || '';
+    return await tokenMatches(parentToken, credentials.parentTokenHash);
+  }
+  if (env.PARENT_API_KEY) {
+    return (request.headers.get('x-parent-key') || '') === env.PARENT_API_KEY;
+  }
+  return true;
 }
 
 export default {
@@ -96,7 +154,68 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/' && request.method === 'GET') return dashboard();
-    if (url.pathname === '/health') return json({ ok: true, service: 'bedtime-parental-worker', storage: 'durable-object' });
+    if (url.pathname === '/health') return json({ ok: true, service: 'bedtime-parental-worker', storage: 'durable-object', pairing: 'token-v1' });
+
+    if (url.pathname === '/api/pairing/start' && request.method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return json({ error: 'invalid json' }, 400); }
+      const childId = String(body?.childId || '').trim();
+      const recoveryPin = String(body?.recoveryPin || '').trim();
+      if (!/^[A-Za-z0-9._-]{1,80}$/.test(childId)) return json({ error: 'invalid childId' }, 400);
+      if (!/^\d{6}$/.test(recoveryPin)) return json({ error: 'recoveryPin must be 6 digits' }, 400);
+
+      const childToken = randomToken(32);
+      const childTokenHash = await sha256(childToken);
+      const child = await childStub(env, childId);
+      await child.fetch(new Request(`https://bedtime-state.internal/credentials?childId=${encodeURIComponent(childId)}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ childTokenHash, parentTokenHash: null, paired: false })
+      }));
+
+      let pairCode = '';
+      let pairStub;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        pairCode = randomPairCode();
+        const pairId = env.BEDTIME_STATE_DO.idFromName(`pair:${pairCode}`);
+        pairStub = env.BEDTIME_STATE_DO.get(pairId);
+        const check = await pairStub.fetch(new Request('https://bedtime-state.internal/pair', { method: 'GET' }));
+        if (check.status === 404) break;
+        pairCode = '';
+      }
+      if (!pairCode || !pairStub) return json({ error: 'unable to allocate pairing code' }, 503);
+
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      await pairStub.fetch(new Request('https://bedtime-state.internal/pair', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ childId, recoveryPin, childTokenHash, expiresAt })
+      }));
+      return json({ ok: true, childId, pairCode, childToken, expiresAt });
+    }
+
+    if (url.pathname === '/api/pairing/claim' && request.method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return json({ error: 'invalid json' }, 400); }
+      const pairCode = String(body?.pairCode || '').trim();
+      if (!/^\d{6}$/.test(pairCode)) return json({ error: 'invalid pairing code' }, 400);
+
+      const pairId = env.BEDTIME_STATE_DO.idFromName(`pair:${pairCode}`);
+      const pairStub = env.BEDTIME_STATE_DO.get(pairId);
+      const pendingResponse = await pairStub.fetch(new Request('https://bedtime-state.internal/pair', { method: 'GET' }));
+      if (!pendingResponse.ok) return json({ error: 'pairing code not found' }, 404);
+      const pending = await pendingResponse.json();
+      if (!pending.expiresAt || Date.parse(pending.expiresAt) <= Date.now()) {
+        await pairStub.fetch(new Request('https://bedtime-state.internal/pair', { method: 'DELETE' }));
+        return json({ error: 'pairing code expired' }, 410);
+      }
+
+      const parentToken = randomToken(32);
+      const parentTokenHash = await sha256(parentToken);
+      const child = await childStub(env, pending.childId);
+      await child.fetch(new Request(`https://bedtime-state.internal/credentials?childId=${encodeURIComponent(pending.childId)}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ childTokenHash: pending.childTokenHash, parentTokenHash, paired: true, pairedAt: new Date().toISOString() })
+      }));
+      await pairStub.fetch(new Request('https://bedtime-state.internal/pair', { method: 'DELETE' }));
+
+      return json({ ok: true, childId: pending.childId, parentToken, recoveryPin: pending.recoveryPin });
+    }
 
     const match = url.pathname.match(/^\/api\/children\/([^/]+)\/bedtime$/);
     if (!match) return json({ error: 'not found' }, 404);
@@ -104,33 +223,26 @@ export default {
     const childId = decodeURIComponent(match[1]);
     if (!/^[A-Za-z0-9._-]{1,80}$/.test(childId)) return json({ error: 'invalid childId' }, 400);
 
+    const credentials = await getCredentials(env, childId);
+
     if (request.method === 'POST') {
-      if (env.PARENT_API_KEY) {
-        const provided = request.headers.get('x-parent-key') || '';
-        if (provided !== env.PARENT_API_KEY) return json({ error: 'unauthorized' }, 401);
-      }
+      if (!(await authorizedParent(request, credentials, env))) return json({ error: 'unauthorized' }, 401);
       let body;
       try { body = await request.json(); } catch { return json({ error: 'invalid json' }, 400); }
       if (typeof body?.active !== 'boolean') return json({ error: 'active must be boolean' }, 400);
-      if (body.allowPowerControls !== undefined && typeof body.allowPowerControls !== 'boolean') {
-        return json({ error: 'allowPowerControls must be boolean' }, 400);
-      }
+      if (body.allowPowerControls !== undefined && typeof body.allowPowerControls !== 'boolean') return json({ error: 'allowPowerControls must be boolean' }, 400);
 
-      const id = env.BEDTIME_STATE_DO.idFromName(childId);
-      const stub = env.BEDTIME_STATE_DO.get(id);
+      const stub = await childStub(env, childId);
       return stub.fetch(new Request(`https://bedtime-state.internal/state?childId=${encodeURIComponent(childId)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body)
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
       }));
     }
 
     if (request.method === 'GET') {
-      const id = env.BEDTIME_STATE_DO.idFromName(childId);
-      const stub = env.BEDTIME_STATE_DO.get(id);
+      if (!(await authorizedForRead(request, credentials))) return json({ error: 'unauthorized' }, 401);
+      const stub = await childStub(env, childId);
       return stub.fetch(new Request(`https://bedtime-state.internal/state?childId=${encodeURIComponent(childId)}`, {
-        method: 'GET',
-        headers: { 'cache-control': 'no-store' }
+        method: 'GET', headers: { 'cache-control': 'no-store' }
       }));
     }
 
