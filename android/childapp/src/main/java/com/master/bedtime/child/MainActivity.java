@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.admin.DevicePolicyManager;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -22,6 +23,8 @@ public class MainActivity extends Activity {
     private TextView setupStep;
     private TextView deviceOwnerStatus;
     private TextView deviceOwnerHelp;
+    private Button accounts;
+    private Button continueSetup;
     private Button permission;
     private Button start;
     private Button batterySettings;
@@ -29,6 +32,7 @@ public class MainActivity extends Activity {
     private Button restoreAccounts;
     private Button releaseDeviceOwner;
     private DevicePolicyManager dpm;
+    private ComponentName admin;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -40,8 +44,8 @@ public class MainActivity extends Activity {
         setupStep = findViewById(R.id.setupStep);
         deviceOwnerStatus = findViewById(R.id.deviceOwnerStatus);
         deviceOwnerHelp = findViewById(R.id.deviceOwnerHelp);
-        Button accounts = findViewById(R.id.btnAccountsSecurity);
-        Button continueSetup = findViewById(R.id.btnContinueSetup);
+        accounts = findViewById(R.id.btnAccountsSecurity);
+        continueSetup = findViewById(R.id.btnContinueSetup);
         permission = findViewById(R.id.btnOverlayPermission);
         start = findViewById(R.id.btnStartMonitor);
         batterySettings = findViewById(R.id.btnBatterySettings);
@@ -49,6 +53,7 @@ public class MainActivity extends Activity {
         test = findViewById(R.id.btnTestOverlay);
         releaseDeviceOwner = findViewById(R.id.btnReleaseDeviceOwner);
         dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+        admin = new ComponentName(this, BedtimeDeviceAdminReceiver.class);
 
         String savedBackend = getSharedPreferences("cfg", MODE_PRIVATE).getString("backend", "https://bedtime-parental-api.itjundobal.workers.dev");
         String normalizedBackend = normalizeBackend(savedBackend);
@@ -75,7 +80,8 @@ public class MainActivity extends Activity {
         test.setOnClickListener(v -> testBedtime());
         releaseDeviceOwner.setOnClickListener(v -> confirmReleaseDeviceOwner());
 
-        if (!getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("account_reminder_seen", false)) {
+        if (!getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("account_reminder_seen", false)
+            && !getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false)) {
             showAccountPreparationReminder();
         }
         refreshSetupState();
@@ -142,23 +148,65 @@ public class MainActivity extends Activity {
             deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
             deviceOwnerHelp.setText("Managed mode ready. Ilagay ang Parent/Worker backend at Child ID, pagkatapos pindutin ang START BEDTIME MONITOR. Pagkatapos, buksan ang Battery / Background Settings at piliin ang Unrestricted / No restrictions / Allow background activity kung available.");
         } else {
-            setupStep.setText("STEP 6 OF 6 — Setup complete");
-            deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
-            deviceOwnerHelp.setText("Setup complete. Auto-start na ang monitor kapag binuksan muli ang CHILD app, pagkatapos ng APK update, at pagkatapos ng reboot. Panatilihin pa rin ang Unrestricted / No restrictions battery setting.");
+            setupStep.setText("SETUP COMPLETE — Child device protected");
+            deviceOwnerStatus.setText(owner ? "Device Owner: ACTIVE ✓" : "Managed protection needs attention");
+            deviceOwnerHelp.setText(owner
+                ? "Bedtime Child is configured. Setup controls are hidden and normal uninstall is blocked while this app remains Device Owner. Remote Bedtime monitoring stays active."
+                : "Device Owner is no longer active. Parent/admin maintenance is required before this child device should be considered protected.");
         }
 
+        if (setupComplete) {
+            applyCompletedChildProtection(owner);
+            showCompletedChildUi(owner);
+            return;
+        }
+
+        accounts.setVisibility(View.VISIBLE);
+        continueSetup.setVisibility(View.VISIBLE);
+        backend.setVisibility(View.VISIBLE);
+        child.setVisibility(View.VISIBLE);
         permission.setVisibility(owner ? View.GONE : View.VISIBLE);
-        start.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
-        start.setText(setupComplete ? "SAVE / RESTART BEDTIME MONITOR" : "3. START BEDTIME MONITOR");
-        batterySettings.setEnabled(accountsConfirmed);
-        restoreAccounts.setVisibility(setupComplete ? View.VISIBLE : View.GONE);
-        test.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
+        start.setVisibility(View.VISIBLE);
+        batterySettings.setVisibility(View.VISIBLE);
+        restoreAccounts.setVisibility(View.GONE);
+        test.setVisibility(View.VISIBLE);
         releaseDeviceOwner.setVisibility(owner ? View.VISIBLE : View.GONE);
 
-        if (setupComplete) {
-            status.setText(owner ? "READY — Managed Bedtime Monitor configured" : "READY — Fallback Bedtime Monitor configured");
-        } else if (owner) {
-            status.setText("Managed setup ready — waiting for monitor start");
+        start.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
+        start.setText("3. START BEDTIME MONITOR");
+        batterySettings.setEnabled(accountsConfirmed);
+        test.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
+
+        if (owner) status.setText("Managed setup ready — waiting for monitor start");
+    }
+
+    private void showCompletedChildUi(boolean owner) {
+        accounts.setVisibility(View.GONE);
+        continueSetup.setVisibility(View.GONE);
+        backend.setVisibility(View.GONE);
+        child.setVisibility(View.GONE);
+        permission.setVisibility(View.GONE);
+        start.setVisibility(View.GONE);
+        test.setVisibility(View.GONE);
+        releaseDeviceOwner.setVisibility(View.GONE);
+
+        // Keep only the two safe post-setup helpers visible. They do not change pairing or Device Owner state.
+        batterySettings.setVisibility(View.VISIBLE);
+        batterySettings.setEnabled(true);
+        batterySettings.setText("BATTERY / BACKGROUND SETTINGS");
+        restoreAccounts.setVisibility(View.VISIBLE);
+        restoreAccounts.setText("ACCOUNTS / DEVICE SETTINGS");
+
+        status.setText(owner
+            ? "PROTECTED — Remote Bedtime Monitor active"
+            : "ATTENTION — Device Owner protection is not active");
+    }
+
+    private void applyCompletedChildProtection(boolean owner) {
+        if (!owner || dpm == null || admin == null) return;
+        try {
+            dpm.setUninstallBlocked(admin, getPackageName(), true);
+        } catch (Exception ignored) {
         }
     }
 
@@ -189,8 +237,9 @@ public class MainActivity extends Activity {
 
         Intent service = new Intent(this, BedtimeMonitorService.class);
         startForegroundService(service);
+        applyCompletedChildProtection(owner);
         refreshSetupState();
-        Toast.makeText(this, wasSetupComplete ? "Bedtime monitor settings saved." : "Bedtime monitor started.", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, wasSetupComplete ? "Bedtime monitor settings saved." : "Child setup complete. Bedtime protection is active.", Toast.LENGTH_LONG).show();
         if (!wasSetupComplete) showRestoreAccountsReminder();
     }
 
@@ -260,6 +309,9 @@ public class MainActivity extends Activity {
                 startActivity(unlock);
             } catch (Exception ignored) {}
 
+            try {
+                dpm.setUninstallBlocked(admin, getPackageName(), false);
+            } catch (Exception ignored) {}
             dpm.clearDeviceOwnerApp(getPackageName());
             Toast.makeText(this, "Device Owner released for testing.", Toast.LENGTH_LONG).show();
         } catch (SecurityException e) {
