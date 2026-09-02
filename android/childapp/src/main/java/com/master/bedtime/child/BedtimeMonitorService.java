@@ -66,22 +66,13 @@ public class BedtimeMonitorService extends Service {
             return;
         }
         try {
-            Intent restart = new Intent(this, BootReceiver.class)
-                .setAction(BootReceiver.ACTION_RESTART_MONITOR);
-            PendingIntent pending = PendingIntent.getBroadcast(
-                this,
-                7001,
-                restart,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-            );
+            Intent restart = new Intent(this, BootReceiver.class).setAction(BootReceiver.ACTION_RESTART_MONITOR);
+            PendingIntent pending = PendingIntent.getBroadcast(this, 7001, restart, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             AlarmManager alarm = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
             if (alarm != null) {
                 long when = System.currentTimeMillis() + 3000L;
-                if (Build.VERSION.SDK_INT >= 23) {
-                    alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pending);
-                } else {
-                    alarm.set(AlarmManager.RTC_WAKEUP, when, pending);
-                }
+                if (Build.VERSION.SDK_INT >= 23) alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pending);
+                else alarm.set(AlarmManager.RTC_WAKEUP, when, pending);
                 Log.w(TAG, "Monitor restart scheduled after " + reason);
             }
         } catch (Exception e) {
@@ -92,10 +83,7 @@ public class BedtimeMonitorService extends Service {
     private void acquireMonitorWakeLock() {
         try {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-            if (pm == null) {
-                Log.w(TAG, "PowerManager unavailable; monitor wake lock not acquired");
-                return;
-            }
+            if (pm == null) return;
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, getPackageName() + ":BedtimeMonitor");
             wakeLock.setReferenceCounted(false);
             wakeLock.acquire();
@@ -107,10 +95,7 @@ public class BedtimeMonitorService extends Service {
 
     private void releaseMonitorWakeLock() {
         try {
-            if (wakeLock != null && wakeLock.isHeld()) {
-                wakeLock.release();
-                Log.i(TAG, "Partial wake lock released");
-            }
+            if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         } catch (Exception e) {
             Log.e(TAG, "Failed to release partial wake lock", e);
         }
@@ -133,17 +118,13 @@ public class BedtimeMonitorService extends Service {
         String raw = value.trim();
         while (raw.endsWith("/")) raw = raw.substring(0, raw.length() - 1);
         if (raw.isEmpty()) return "";
-
         boolean hadHttps = raw.toLowerCase().contains("https://");
         boolean hadHttp = raw.toLowerCase().contains("http://");
         while (raw.toLowerCase().startsWith("http://") || raw.toLowerCase().startsWith("https://")) {
             if (raw.toLowerCase().startsWith("https://")) raw = raw.substring(8);
             else raw = raw.substring(7);
         }
-
-        if (raw.toLowerCase().endsWith(".workers.dev") || raw.toLowerCase().contains(".workers.dev/")) {
-            return "https://" + raw;
-        }
+        if (raw.toLowerCase().endsWith(".workers.dev") || raw.toLowerCase().contains(".workers.dev/")) return "https://" + raw;
         if (hadHttps) return "https://" + raw;
         if (hadHttp) return "http://" + raw;
         return "https://" + raw;
@@ -151,7 +132,6 @@ public class BedtimeMonitorService extends Service {
 
     private void showManagedLock() {
         try {
-            Log.i(TAG, "Applying managed lock");
             Intent i = new Intent(this, BedtimeLockActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             startActivity(i);
@@ -162,14 +142,7 @@ public class BedtimeMonitorService extends Service {
 
     private void hideManagedLock() {
         try {
-            Log.i(TAG, "Removing managed lock");
-
-            if (BedtimeLockActivity.requestRemoteUnlock()) {
-                Log.i(TAG, "Active bedtime screen accepted direct unlock");
-                return;
-            }
-
-            Log.i(TAG, "No active bedtime screen instance; using activity-intent unlock fallback");
+            if (BedtimeLockActivity.requestRemoteUnlock()) return;
             Intent i = new Intent(this, BedtimeLockActivity.class)
                 .putExtra("bedtime_off", true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -180,11 +153,7 @@ public class BedtimeMonitorService extends Service {
     }
 
     private void applyState(boolean active) {
-        if (lastAppliedActive != null && lastAppliedActive == active) {
-            return;
-        }
-
-        Log.i(TAG, "Applying state transition active=" + active);
+        if (lastAppliedActive != null && lastAppliedActive == active) return;
         if (isDeviceOwner()) {
             BedtimeOverlay.hide(this);
             if (active) showManagedLock();
@@ -199,12 +168,7 @@ public class BedtimeMonitorService extends Service {
     private void pollLoop() {
         while (running) {
             long now = SystemClock.elapsedRealtime();
-            if (lastPollStartedAt > 0L) {
-                long gap = now - lastPollStartedAt;
-                if (gap > 5000L) {
-                    Log.w(TAG, "Poll wake gap detected: " + gap + "ms");
-                }
-            }
+            if (lastPollStartedAt > 0L && now - lastPollStartedAt > 5000L) Log.w(TAG, "Poll wake gap detected: " + (now - lastPollStartedAt) + "ms");
             lastPollStartedAt = now;
 
             HttpURLConnection c = null;
@@ -213,49 +177,37 @@ public class BedtimeMonitorService extends Service {
                 String savedBase = p.getString("backend", "");
                 String base = normalizeBackend(savedBase);
                 String child = p.getString("child", "child-001");
+                String childToken = p.getString("child_token", "");
 
-                if (!base.equals(savedBase)) {
-                    p.edit().putString("backend", base).apply();
-                    Log.i(TAG, "Normalized backend URL to " + base);
-                }
+                if (!base.equals(savedBase)) p.edit().putString("backend", base).apply();
 
-                Log.i(TAG, "Poll config backend=" + base + " child=" + child);
                 if (!base.isEmpty()) {
                     URL url = new URL(base + "/api/children/" + child + "/bedtime");
-                    Log.i(TAG, "GET " + url);
                     c = (HttpURLConnection) url.openConnection();
                     c.setRequestMethod("GET");
                     c.setConnectTimeout(5000);
                     c.setReadTimeout(5000);
                     c.setUseCaches(false);
                     c.setRequestProperty("Accept", "application/json");
+                    c.setRequestProperty("Cache-Control", "no-cache");
+                    if (!childToken.isEmpty()) c.setRequestProperty("x-child-token", childToken);
 
                     int code = c.getResponseCode();
-                    Log.i(TAG, "HTTP " + code);
+                    Log.i(TAG, "HTTP " + code + " child=" + child);
                     if (code == 200) {
                         StringBuilder sb = new StringBuilder();
                         try (BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()))) {
                             String line;
                             while ((line = br.readLine()) != null) sb.append(line);
                         }
-
-                        String response = sb.toString();
-                        Log.i(TAG, "Response " + response);
-                        JSONObject state = new JSONObject(response);
+                        JSONObject state = new JSONObject(sb.toString());
                         boolean active = state.optBoolean("active", false);
                         boolean allowPowerControls = state.optBoolean("allowPowerControls", false);
-                        p.edit()
-                            .putBoolean("last_active", active)
-                            .putBoolean("allow_power_controls", allowPowerControls)
-                            .apply();
-
-                        Log.i(TAG, "State active=" + active + " allowPowerControls=" + allowPowerControls + " deviceOwner=" + isDeviceOwner());
+                        p.edit().putBoolean("last_active", active).putBoolean("allow_power_controls", allowPowerControls).apply();
                         applyState(active);
                     } else {
                         Log.w(TAG, "Non-200 response: " + code);
                     }
-                } else {
-                    Log.w(TAG, "Backend URL is empty");
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Poll failed: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
@@ -263,22 +215,14 @@ public class BedtimeMonitorService extends Service {
                 if (c != null) c.disconnect();
             }
 
-            try {
-                Thread.sleep(POLL_INTERVAL_MS);
-            } catch (InterruptedException e) {
-                Log.i(TAG, "Poll loop interrupted");
-                return;
-            }
+            try { Thread.sleep(POLL_INTERVAL_MS); }
+            catch (InterruptedException e) { return; }
         }
     }
 
-    @Override public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.i(TAG, "onStartCommand startId=" + startId + " sticky=true");
-        return START_STICKY;
-    }
+    @Override public int onStartCommand(Intent intent, int flags, int startId) { return START_STICKY; }
 
     @Override public void onTaskRemoved(Intent rootIntent) {
-        Log.w(TAG, "App task removed; keeping child monitor alive");
         scheduleMonitorRestart("task removal");
         super.onTaskRemoved(rootIntent);
     }
@@ -287,7 +231,6 @@ public class BedtimeMonitorService extends Service {
         running = false;
         if (worker != null) worker.interrupt();
         releaseMonitorWakeLock();
-        Log.w(TAG, "Service destroyed");
         scheduleMonitorRestart("service destruction");
         super.onDestroy();
     }
