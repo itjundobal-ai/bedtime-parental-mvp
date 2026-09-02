@@ -5,10 +5,10 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.master.bedtime.parent"
+        applicationId = "com.master.bedtime.child"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2000
+        versionName = "1.0.0-universal"
     }
 }
