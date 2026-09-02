@@ -263,8 +263,10 @@ public class MainActivity extends Activity {
         backend.setVisibility(View.GONE);
         child.setVisibility(View.GONE);
         permission.setVisibility(View.GONE);
-        generatePairing.setVisibility(View.GONE);
-        pairingCode.setVisibility(View.GONE);
+        pairingCode.setVisibility(View.VISIBLE);
+        generatePairing.setVisibility(View.VISIBLE);
+        generatePairing.setEnabled(owner);
+        generatePairing.setText("GENERATE NEW PAIRING CODE");
         start.setVisibility(View.GONE);
         test.setVisibility(View.GONE);
         releaseDeviceOwner.setVisibility(View.GONE);
