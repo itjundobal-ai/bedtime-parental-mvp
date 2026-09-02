@@ -112,8 +112,9 @@ public class ParentActivity extends Activity {
         if (expectedPin.isEmpty()) {
             new AlertDialog.Builder(this)
                 .setTitle("Old CHILD protection detected")
-                .setMessage("This phone is still Device Owner, but the local recovery code is missing. Do not clear app data. Use the CHILD recovery path or maintenance procedure before uninstalling.")
-                .setPositiveButton("OK", null)
+                .setMessage("The local recovery code for this old CHILD setup is missing. A guarded maintenance release is available only for this PARENT-role stale Device Owner case.")
+                .setNegativeButton("CANCEL", null)
+                .setPositiveButton("MAINTENANCE RELEASE", (dialog, which) -> showMaintenanceReleasePrompt())
                 .show();
             return;
         }
@@ -131,6 +132,35 @@ public class ParentActivity extends Activity {
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             if (!expectedPin.equals(input.getText().toString().trim())) {
                 input.setError("Wrong recovery code");
+                return;
+            }
+            dialog.dismiss();
+            confirmReleaseOldChildProtection();
+        }));
+        dialog.show();
+    }
+
+    private void showMaintenanceReleasePrompt() {
+        String role = getSharedPreferences("app_role", MODE_PRIVATE).getString("role", "");
+        String recoveryPin = getSharedPreferences(CHILD_CFG, MODE_PRIVATE).getString(KEY_RECOVERY_PIN, "");
+        if (!"parent".equals(role) || !isDeviceOwner() || !recoveryPin.isEmpty()) {
+            Toast.makeText(this, "Maintenance release is not available for this state.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        EditText input = new EditText(this);
+        input.setHint("Type RELEASE");
+        input.setSingleLine(true);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("Maintenance release")
+            .setMessage("Use this only to clean up an old CHILD Device Owner state after this phone has already been switched to PARENT role. Type RELEASE to continue.")
+            .setView(input)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("CONTINUE", null)
+            .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (!"RELEASE".equals(input.getText().toString().trim().toUpperCase())) {
+                input.setError("Type RELEASE exactly");
                 return;
             }
             dialog.dismiss();
