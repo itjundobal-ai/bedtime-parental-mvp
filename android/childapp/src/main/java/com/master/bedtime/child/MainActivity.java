@@ -88,6 +88,8 @@ public class MainActivity extends Activity {
         String savedPairCode = getSharedPreferences(CFG, MODE_PRIVATE).getString("pair_code", "");
         if (!savedPairCode.isEmpty()) pairingCode.setText("Pairing code: " + savedPairCode);
 
+        migrateLegacyCompletedSetupForPairing();
+
         accounts.setOnClickListener(v -> showAccountPreparationReminder());
         continueSetup.setOnClickListener(v -> {
             getSharedPreferences(CFG, MODE_PRIVATE).edit().putBoolean("accounts_confirmed", true).apply();
@@ -118,6 +120,17 @@ public class MainActivity extends Activity {
         super.onResume();
         refreshSetupState();
         autoStartConfiguredMonitor();
+    }
+
+    private void migrateLegacyCompletedSetupForPairing() {
+        boolean setupComplete = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("setup_complete", false);
+        String childToken = getSharedPreferences(CFG, MODE_PRIVATE).getString("child_token", "");
+        if (setupComplete && childToken.isEmpty()) {
+            getSharedPreferences(CFG, MODE_PRIVATE).edit()
+                .putBoolean("setup_complete", false)
+                .putBoolean("legacy_pairing_migration", true)
+                .apply();
+        }
     }
 
     private void autoStartConfiguredMonitor() {
@@ -279,7 +292,6 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     pairingCode.setText("PAIRING CODE: " + pair + "\nEnter this in the PARENT app.");
                     generatePairing.setEnabled(true);
-                    refreshSetupState();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
@@ -356,6 +368,7 @@ public class MainActivity extends Activity {
             .putString("backend", backendValue)
             .putString("child", childValue)
             .putBoolean("setup_complete", true)
+            .remove("legacy_pairing_migration")
             .apply();
         startForegroundService(new Intent(this, BedtimeMonitorService.class));
         applyCompletedChildProtection(owner);
@@ -417,6 +430,7 @@ public class MainActivity extends Activity {
                 .remove(KEY_RECOVERY_PIN)
                 .remove("child_token")
                 .remove("pair_code")
+                .remove("legacy_pairing_migration")
                 .apply();
             Toast.makeText(this, "Managed protection released. The app can now be uninstalled.", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
