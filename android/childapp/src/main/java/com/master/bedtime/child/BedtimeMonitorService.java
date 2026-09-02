@@ -1,5 +1,6 @@
 package com.master.bedtime.child;
 
+import android.app.AlarmManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -10,6 +11,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
 
@@ -26,6 +28,7 @@ public class BedtimeMonitorService extends Service {
     private static final String CHANNEL = "bedtime_monitor";
     private static final String TAG = "BedtimeMonitor";
     private static final long POLL_INTERVAL_MS = 1000L;
+    private static final long RESTART_DELAY_MS = 5000L;
     private Boolean lastAppliedActive = null;
 
     @Override public void onCreate() {
@@ -56,6 +59,30 @@ public class BedtimeMonitorService extends Service {
     private boolean isDeviceOwner() {
         DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
         return dpm != null && dpm.isDeviceOwnerApp(getPackageName());
+    }
+
+    private boolean setupComplete() {
+        return getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
+    }
+
+    private void scheduleRestart() {
+        if (!setupComplete()) return;
+        try {
+            AlarmManager alarm = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+            if (alarm == null) return;
+            Intent restart = new Intent(this, MonitorRestartReceiver.class).setAction("com.master.bedtime.child.RESTART_MONITOR");
+            PendingIntent pi = PendingIntent.getBroadcast(
+                this,
+                73,
+                restart,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            long when = SystemClock.elapsedRealtime() + RESTART_DELAY_MS;
+            alarm.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, when, pi);
+            Log.i(TAG, "Monitor restart scheduled");
+        } catch (Exception e) {
+            Log.e(TAG, "Unable to schedule monitor restart", e);
+        }
     }
 
     private String normalizeBackend(String value) {
@@ -103,9 +130,7 @@ public class BedtimeMonitorService extends Service {
     }
 
     private void applyState(boolean active) {
-        if (lastAppliedActive != null && lastAppliedActive == active) {
-            return;
-        }
+        if (lastAppliedActive != null && lastAppliedActive == active) return;
 
         Log.i(TAG, "Applying state transition active=" + active);
         if (isDeviceOwner()) {
@@ -133,10 +158,8 @@ public class BedtimeMonitorService extends Service {
                     Log.i(TAG, "Normalized backend URL to " + base);
                 }
 
-                Log.i(TAG, "Poll config backend=" + base + " child=" + child);
                 if (!base.isEmpty()) {
                     URL url = new URL(base + "/api/children/" + child + "/bedtime");
-                    Log.i(TAG, "GET " + url);
                     c = (HttpURLConnection) url.openConnection();
                     c.setRequestMethod("GET");
                     c.setConnectTimeout(5000);
@@ -145,7 +168,6 @@ public class BedtimeMonitorService extends Service {
                     c.setRequestProperty("Accept", "application/json");
 
                     int code = c.getResponseCode();
-                    Log.i(TAG, "HTTP " + code);
                     if (code == 200) {
                         StringBuilder sb = new StringBuilder();
                         try (BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()))) {
@@ -153,17 +175,14 @@ public class BedtimeMonitorService extends Service {
                             while ((line = br.readLine()) != null) sb.append(line);
                         }
 
-                        String response = sb.toString();
-                        Log.i(TAG, "Response " + response);
-                        JSONObject state = new JSONObject(response);
+                        JSONObject state = new JSONObject(sb.toString());
                         boolean active = state.optBoolean("active", false);
                         boolean allowPowerControls = state.optBoolean("allowPowerControls", false);
                         p.edit()
                             .putBoolean("last_active", active)
                             .putBoolean("allow_power_controls", allowPowerControls)
+                            .putLong("last_poll_ok_at", System.currentTimeMillis())
                             .apply();
-
-                        Log.i(TAG, "State active=" + active + " allowPowerControls=" + allowPowerControls + " deviceOwner=" + isDeviceOwner());
                         applyState(active);
                     } else {
                         Log.w(TAG, "Non-200 response: " + code);
@@ -180,18 +199,26 @@ public class BedtimeMonitorService extends Service {
             try {
                 Thread.sleep(POLL_INTERVAL_MS);
             } catch (InterruptedException e) {
-                Log.i(TAG, "Poll loop interrupted");
                 return;
             }
         }
     }
 
-    @Override public int onStartCommand(Intent intent, int flags, int startId) { return START_STICKY; }
+    @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        return START_STICKY;
+    }
+
+    @Override public void onTaskRemoved(Intent rootIntent) {
+        Log.w(TAG, "Task removed; scheduling foreground monitor restart");
+        scheduleRestart();
+        super.onTaskRemoved(rootIntent);
+    }
 
     @Override public void onDestroy() {
         running = false;
         if (worker != null) worker.interrupt();
-        Log.i(TAG, "Service destroyed");
+        Log.w(TAG, "Service destroyed; scheduling restart when setup remains active");
+        scheduleRestart();
         super.onDestroy();
     }
 
