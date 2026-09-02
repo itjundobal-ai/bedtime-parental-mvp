@@ -233,6 +233,42 @@ Preserve these behaviors before adding new features:
 - Legacy migration exposes only pairing + monitor-start controls, not all sensitive setup.
 - Parent/Child pairing and Bedtime flow reported functional by user.
 
+## 16. PARENT role could remain Device Owner from an old CHILD setup and become uninstallable
+
+**Problem / initial assumption**
+- During role reversal testing, TECNO was showing the PARENT UI, so it initially looked like it should behave like a normal uninstallable PARENT installation.
+
+**Observed symptom / logs**
+- Normal uninstall was blocked even though the app was in PARENT role.
+- `adb shell dpm list-owners` repeatedly returned:
+  `User  0: admin=com.master.bedtime.child/.BedtimeDeviceAdminReceiver,DeviceOwner,Affiliated`
+- The first PARENT-side release button could not proceed because it reported the local recovery mode/code was missing.
+
+**Root cause**
+- App role and Android Device Owner state are independent.
+- Switching/showing PARENT does not automatically release a Device Owner relationship left from an earlier CHILD configuration.
+- In this orphaned state, the old local CHILD recovery PIN could already be missing, so the normal 6-digit recovery path had nothing to validate against.
+
+**Fix that worked**
+- Added PARENT-side detection for stale local Device Owner state.
+- Added a guarded maintenance fallback only for the orphaned case where PARENT role is active, this package is still Device Owner, and the local CHILD recovery PIN is missing.
+- Maintenance release requires explicit destructive confirmation (`RELEASE`) before running the same intentional cleanup path: stop old CHILD monitor state, remove uninstall block, and call the app-owned Device Owner release routine.
+- Implementation commit: `d599b90e37d251fdfcabb5cdf163d2a613045621` (`Add guarded maintenance release for orphaned Device Owner`).
+- Build #54 contained this maintenance path.
+
+**Verification**
+- Latest signed APK was installed over the existing package with `adb install -r`, preserving the orphaned Device Owner state long enough to exercise the fix.
+- User completed the maintenance release flow.
+- After the new installer/fix, the app became uninstallable and the user successfully uninstalled it from TECNO.
+- This verifies the orphaned PARENT-role / stale-Device-Owner recovery path on the tested TECNO device.
+
+**Rollback / non-regression rule**
+- Never assume UI role equals Android management state; always check `DevicePolicyManager.isDeviceOwnerApp()` for role-swap/release logic.
+- Do not use `pm clear` as a recovery step while Device Owner is still active because it can erase local recovery state without removing the system Device Owner relationship.
+- Do not rely on `adb dpm remove-active-admin` as a Device Owner bypass.
+- Normal CHILD recovery remains the preferred path when the valid 6-digit recovery PIN exists. The maintenance fallback is only for the orphaned missing-recovery case and must remain explicitly confirmed.
+- Future role switching should prevent or safely resolve stale Device Owner before allowing the device to settle into PARENT mode.
+
 ## Next planned phase
 
 Multiple children -> per-child controls/recovery code -> Child #1 one-day free trial -> Child #2 paid gate -> monthly/yearly billing -> QR payment flow.
