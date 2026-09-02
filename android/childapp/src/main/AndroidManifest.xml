@@ -23,7 +23,11 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
 
-        <service android:name=".BedtimeMonitorService" android:exported="false" android:foregroundServiceType="specialUse">
+        <service
+            android:name=".BedtimeMonitorService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Parental bedtime command monitor and persistent bedtime overlay" />
         </service>
 
@@ -39,9 +43,14 @@
             </intent-filter>
         </receiver>
 
-        <receiver android:name=".BootReceiver" android:enabled="true" android:exported="true">
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:directBootAware="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.USER_UNLOCKED" />
             </intent-filter>
@@ -50,6 +59,7 @@
         <receiver
             android:name=".MonitorRestartReceiver"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:directBootAware="true" />
     </application>
 </manifest>
