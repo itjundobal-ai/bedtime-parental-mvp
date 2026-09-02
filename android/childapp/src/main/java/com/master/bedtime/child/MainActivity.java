@@ -10,13 +10,20 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.text.InputType;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.security.SecureRandom;
+
 public class MainActivity extends Activity {
+    private static final String CFG = "cfg";
+    private static final String KEY_RECOVERY_PIN = "parent_recovery_pin";
+    private static final String KEY_RECOVERY_PIN_SHOWN = "parent_recovery_pin_shown";
+
     private EditText backend;
     private EditText child;
     private TextView status;
@@ -55,17 +62,17 @@ public class MainActivity extends Activity {
         dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
         admin = new ComponentName(this, BedtimeDeviceAdminReceiver.class);
 
-        String savedBackend = getSharedPreferences("cfg", MODE_PRIVATE).getString("backend", "https://bedtime-parental-api.itjundobal.workers.dev");
+        String savedBackend = getSharedPreferences(CFG, MODE_PRIVATE).getString("backend", "https://bedtime-parental-api.itjundobal.workers.dev");
         String normalizedBackend = normalizeBackend(savedBackend);
         backend.setText(normalizedBackend);
         if (!normalizedBackend.equals(savedBackend)) {
-            getSharedPreferences("cfg", MODE_PRIVATE).edit().putString("backend", normalizedBackend).apply();
+            getSharedPreferences(CFG, MODE_PRIVATE).edit().putString("backend", normalizedBackend).apply();
         }
-        child.setText(getSharedPreferences("cfg", MODE_PRIVATE).getString("child", "child-001"));
+        child.setText(getSharedPreferences(CFG, MODE_PRIVATE).getString("child", "child-001"));
 
         accounts.setOnClickListener(v -> showAccountPreparationReminder());
         continueSetup.setOnClickListener(v -> {
-            getSharedPreferences("cfg", MODE_PRIVATE).edit().putBoolean("accounts_confirmed", true).apply();
+            getSharedPreferences(CFG, MODE_PRIVATE).edit().putBoolean("accounts_confirmed", true).apply();
             refreshSetupState();
         });
 
@@ -80,12 +87,21 @@ public class MainActivity extends Activity {
         test.setOnClickListener(v -> testBedtime());
         releaseDeviceOwner.setOnClickListener(v -> confirmReleaseDeviceOwner());
 
-        if (!getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("account_reminder_seen", false)
-            && !getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false)) {
+        // Hidden local parent/admin recovery entry while secure remote pairing is still under development.
+        // Long-press the protected status text, then enter the recovery PIN shown once to the parent.
+        status.setOnLongClickListener(v -> {
+            if (!getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("setup_complete", false)) return false;
+            showRecoveryPinPrompt();
+            return true;
+        });
+
+        if (!getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("account_reminder_seen", false)
+            && !getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("setup_complete", false)) {
             showAccountPreparationReminder();
         }
         refreshSetupState();
         autoStartConfiguredMonitor();
+        showRecoveryPinOnceIfNeeded();
     }
 
     @Override protected void onResume() {
@@ -96,7 +112,7 @@ public class MainActivity extends Activity {
 
     private void autoStartConfiguredMonitor() {
         String role = getSharedPreferences("app_role", MODE_PRIVATE).getString("role", "");
-        boolean setupComplete = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
+        boolean setupComplete = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("setup_complete", false);
         if (!"child".equals(role) || !setupComplete) return;
 
         try {
@@ -131,8 +147,8 @@ public class MainActivity extends Activity {
     }
 
     private void refreshSetupState() {
-        boolean accountsConfirmed = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("accounts_confirmed", false);
-        boolean setupComplete = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
+        boolean accountsConfirmed = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("accounts_confirmed", false);
+        boolean setupComplete = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("setup_complete", false);
         boolean owner = isDeviceOwner();
 
         if (!accountsConfirmed) {
@@ -190,7 +206,6 @@ public class MainActivity extends Activity {
         test.setVisibility(View.GONE);
         releaseDeviceOwner.setVisibility(View.GONE);
 
-        // Keep only the two safe post-setup helpers visible. They do not change pairing or Device Owner state.
         batterySettings.setVisibility(View.VISIBLE);
         batterySettings.setEnabled(true);
         batterySettings.setText("BATTERY / BACKGROUND SETTINGS");
@@ -208,6 +223,79 @@ public class MainActivity extends Activity {
             dpm.setUninstallBlocked(admin, getPackageName(), true);
         } catch (Exception ignored) {
         }
+    }
+
+    private String ensureRecoveryPin() {
+        String existing = getSharedPreferences(CFG, MODE_PRIVATE).getString(KEY_RECOVERY_PIN, "");
+        if (!existing.isEmpty()) return existing;
+
+        SecureRandom random = new SecureRandom();
+        int value = 100000 + random.nextInt(900000);
+        String pin = String.valueOf(value);
+        getSharedPreferences(CFG, MODE_PRIVATE).edit()
+            .putString(KEY_RECOVERY_PIN, pin)
+            .putBoolean(KEY_RECOVERY_PIN_SHOWN, false)
+            .apply();
+        return pin;
+    }
+
+    private void showRecoveryPinOnceIfNeeded() {
+        boolean setupComplete = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("setup_complete", false);
+        boolean owner = isDeviceOwner();
+        if (!setupComplete || !owner) return;
+
+        String pin = ensureRecoveryPin();
+        boolean shown = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean(KEY_RECOVERY_PIN_SHOWN, false);
+        if (shown) return;
+
+        new AlertDialog.Builder(this)
+            .setTitle("Parent recovery code — save this")
+            .setMessage("Temporary parent/admin recovery code for this CHILD device:\n\n" + pin +
+                "\n\nSave this somewhere the child cannot access. To use it later, long-press the PROTECTED status inside the CHILD app. This local recovery path will be replaced by secure parent pairing in the final product.")
+            .setCancelable(false)
+            .setPositiveButton("I SAVED IT", (dialog, which) ->
+                getSharedPreferences(CFG, MODE_PRIVATE).edit().putBoolean(KEY_RECOVERY_PIN_SHOWN, true).apply())
+            .show();
+    }
+
+    private void showRecoveryPinPrompt() {
+        if (!isDeviceOwner()) {
+            Toast.makeText(this, "Device Owner is not active.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        final String expectedPin = ensureRecoveryPin();
+        EditText input = new EditText(this);
+        input.setHint("6-digit parent recovery code");
+        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("Parent/Admin recovery")
+            .setMessage("Enter the recovery code to release this CHILD device from managed protection.")
+            .setView(input)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("CONTINUE", null)
+            .create();
+
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String entered = input.getText().toString().trim();
+            if (!expectedPin.equals(entered)) {
+                input.setError("Wrong recovery code");
+                return;
+            }
+            dialog.dismiss();
+            confirmParentRecoveryRelease();
+        }));
+        dialog.show();
+    }
+
+    private void confirmParentRecoveryRelease() {
+        new AlertDialog.Builder(this)
+            .setTitle("Release CHILD device?")
+            .setMessage("This will turn Bedtime protection off locally, stop the monitor, remove the uninstall block, and attempt to release Device Owner so the app can be uninstalled or provisioned again. Use only when the parent/admin intentionally wants to remove management.")
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("RELEASE DEVICE", (dialog, which) -> releaseDeviceOwnerForRecovery())
+            .show();
     }
 
     private void startMonitor() {
@@ -228,8 +316,8 @@ public class MainActivity extends Activity {
         }
         backend.setText(backendValue);
 
-        boolean wasSetupComplete = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
-        getSharedPreferences("cfg", MODE_PRIVATE).edit()
+        boolean wasSetupComplete = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("setup_complete", false);
+        getSharedPreferences(CFG, MODE_PRIVATE).edit()
             .putString("backend", backendValue)
             .putString("child", childValue)
             .putBoolean("setup_complete", true)
@@ -238,9 +326,13 @@ public class MainActivity extends Activity {
         Intent service = new Intent(this, BedtimeMonitorService.class);
         startForegroundService(service);
         applyCompletedChildProtection(owner);
+        ensureRecoveryPin();
         refreshSetupState();
         Toast.makeText(this, wasSetupComplete ? "Bedtime monitor settings saved." : "Child setup complete. Bedtime protection is active.", Toast.LENGTH_LONG).show();
-        if (!wasSetupComplete) showRestoreAccountsReminder();
+        if (!wasSetupComplete) {
+            showRestoreAccountsReminder();
+            showRecoveryPinOnceIfNeeded();
+        }
     }
 
     private void showBatterySettingsGuide() {
@@ -267,7 +359,7 @@ public class MainActivity extends Activity {
 
     private void testBedtime() {
         if (isDeviceOwner()) {
-            getSharedPreferences("cfg", MODE_PRIVATE).edit().putBoolean("last_active", true).apply();
+            getSharedPreferences(CFG, MODE_PRIVATE).edit().putBoolean("last_active", true).apply();
             Intent lock = new Intent(this, BedtimeLockActivity.class);
             startActivity(lock);
             return;
@@ -287,33 +379,49 @@ public class MainActivity extends Activity {
 
         new AlertDialog.Builder(this)
             .setTitle("TEST ONLY — Release Device Owner?")
-            .setMessage("Gamitin lang ito sa test device. Tatanggalin nito ang Device Owner role para ma-uninstall o ma-reprovision ang app. Hindi nito ginagawa ang factory reset.")
+            .setMessage("Gamitin lang ito habang setup/testing pa. Tatanggalin nito ang Device Owner role para ma-uninstall o ma-reprovision ang app.")
             .setNegativeButton("CANCEL", null)
-            .setPositiveButton("RELEASE DEVICE OWNER", (dialog, which) -> releaseDeviceOwnerForTesting())
+            .setPositiveButton("RELEASE DEVICE OWNER", (dialog, which) -> releaseDeviceOwnerForRecovery())
             .show();
     }
 
     @SuppressWarnings("deprecation")
-    private void releaseDeviceOwnerForTesting() {
+    private void releaseDeviceOwnerForRecovery() {
         if (dpm == null || !dpm.isDeviceOwnerApp(getPackageName())) return;
 
         try {
-            getSharedPreferences("cfg", MODE_PRIVATE).edit()
+            // Disable auto-restart before stopping the service so the watchdog does not bring it back.
+            getSharedPreferences(CFG, MODE_PRIVATE).edit()
                 .putBoolean("last_active", false)
                 .putBoolean("setup_complete", false)
                 .apply();
+
             stopService(new Intent(this, BedtimeMonitorService.class));
+
             try {
-                Intent unlock = new Intent(this, BedtimeLockActivity.class);
-                unlock.putExtra("bedtime_off", true);
-                startActivity(unlock);
+                BedtimeOverlay.hide(this);
+            } catch (Exception ignored) {}
+
+            try {
+                if (!BedtimeLockActivity.requestRemoteUnlock()) {
+                    Intent unlock = new Intent(this, BedtimeLockActivity.class);
+                    unlock.putExtra("bedtime_off", true);
+                    startActivity(unlock);
+                }
             } catch (Exception ignored) {}
 
             try {
                 dpm.setUninstallBlocked(admin, getPackageName(), false);
             } catch (Exception ignored) {}
+
             dpm.clearDeviceOwnerApp(getPackageName());
-            Toast.makeText(this, "Device Owner released for testing.", Toast.LENGTH_LONG).show();
+
+            getSharedPreferences(CFG, MODE_PRIVATE).edit()
+                .remove(KEY_RECOVERY_PIN)
+                .remove(KEY_RECOVERY_PIN_SHOWN)
+                .apply();
+
+            Toast.makeText(this, "Managed protection released. The app can now be uninstalled or provisioned again.", Toast.LENGTH_LONG).show();
         } catch (SecurityException e) {
             Toast.makeText(this, "Android blocked Device Owner release on this device.", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
@@ -328,7 +436,7 @@ public class MainActivity extends Activity {
             .setMessage("Para tuloy-tuloy ang Device Owner setup, alisin muna ang mga naka-save na account sa device. Siguraduhing alam ninyo ang email/username at password ng inyong mga account bago alisin ang mga ito. Pagkatapos ng installation at setup, maaari ninyo silang idagdag muli.\n\nKung okay po sa inyo, pindutin ang button sa ibaba at dadalhin kayo diretso sa Accounts / Account & Security settings.")
             .setNegativeButton("Hindi muna", null)
             .setPositiveButton("OKAY, PUNTA SA ACCOUNTS", (dialog, which) -> {
-                getSharedPreferences("cfg", MODE_PRIVATE).edit().putBoolean("account_reminder_seen", true).apply();
+                getSharedPreferences(CFG, MODE_PRIVATE).edit().putBoolean("account_reminder_seen", true).apply();
                 openAccountsSettings();
             })
             .show();
