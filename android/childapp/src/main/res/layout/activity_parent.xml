@@ -1,62 +1,97 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="24dp"
-    android:gravity="center_horizontal">
+    android:layout_height="match_parent">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Parent Bedtime Control"
-        android:textSize="28sp"
-        android:textStyle="bold" />
-
-    <EditText
-        android:id="@+id/parentChildId"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="28dp"
-        android:hint="Child ID"
-        android:text="child-001" />
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:gravity="center_horizontal">
 
-    <TextView
-        android:id="@+id/parentStatus"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="18dp"
-        android:gravity="center"
-        android:text="Checking state..."
-        android:textSize="18sp"
-        android:textStyle="bold" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Parent Bedtime Control"
+            android:textSize="28sp"
+            android:textStyle="bold" />
 
-    <Button
-        android:id="@+id/btnBedtimeOn"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="28dp"
-        android:text="BEDTIME ON" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="ADD / PAIR CHILD"
+            android:textStyle="bold" />
 
-    <Button
-        android:id="@+id/btnBedtimeOff"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:text="BEDTIME OFF" />
+        <EditText
+            android:id="@+id/parentPairCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="6-digit pairing code from CHILD"
+            android:inputType="number" />
 
-    <Button
-        android:id="@+id/btnRefreshState"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:text="REFRESH STATUS" />
+        <Button
+            android:id="@+id/btnPairChild"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="PAIR CHILD" />
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:gravity="center"
-        android:text="Testing milestone: native parent control using the current Cloudflare backend. Secure pairing/authentication comes next."
-        android:textSize="14sp" />
-</LinearLayout>
+        <EditText
+            android:id="@+id/parentChildId"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:hint="Paired Child ID"
+            android:enabled="false" />
+
+        <TextView
+            android:id="@+id/parentRecoveryCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Recovery code: not paired yet"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/parentStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:gravity="center"
+            android:text="Pair a child to begin"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnBedtimeOn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:text="BEDTIME ON" />
+
+        <Button
+            android:id="@+id/btnBedtimeOff"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="BEDTIME OFF" />
+
+        <Button
+            android:id="@+id/btnRefreshState"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="REFRESH STATUS" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:text="After pairing, the Parent app securely stores the child credential and recovery code on this Parent device."
+            android:textSize="14sp" />
+    </LinearLayout>
+</ScrollView>
