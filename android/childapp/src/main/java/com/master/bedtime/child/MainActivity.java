@@ -33,6 +33,8 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        BedtimeStorage.mirror(this);
+
         backend = findViewById(R.id.backendUrl);
         child = findViewById(R.id.childId);
         status = findViewById(R.id.status);
@@ -53,12 +55,14 @@ public class MainActivity extends Activity {
         backend.setText(normalizedBackend);
         if (!normalizedBackend.equals(savedBackend)) {
             getSharedPreferences("cfg", MODE_PRIVATE).edit().putString("backend", normalizedBackend).apply();
+            BedtimeStorage.mirror(this);
         }
         child.setText(getSharedPreferences("cfg", MODE_PRIVATE).getString("child", "child-001"));
 
         accounts.setOnClickListener(v -> showAccountPreparationReminder());
         continueSetup.setOnClickListener(v -> {
             getSharedPreferences("cfg", MODE_PRIVATE).edit().putBoolean("accounts_confirmed", true).apply();
+            BedtimeStorage.mirror(this);
             refreshSetupState();
         });
 
@@ -164,11 +168,7 @@ public class MainActivity extends Activity {
         backend.setText(backendValue);
 
         boolean wasSetupComplete = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
-        getSharedPreferences("cfg", MODE_PRIVATE).edit()
-            .putString("backend", backendValue)
-            .putString("child", childValue)
-            .putBoolean("setup_complete", true)
-            .apply();
+        BedtimeStorage.setSetup(this, backendValue, childValue, true);
 
         Intent service = new Intent(this, BedtimeMonitorService.class);
         startForegroundService(service);
@@ -179,7 +179,7 @@ public class MainActivity extends Activity {
 
     private void testBedtime() {
         if (isDeviceOwner()) {
-            getSharedPreferences("cfg", MODE_PRIVATE).edit().putBoolean("last_active", true).apply();
+            BedtimeStorage.setLastActive(this, true);
             Intent lock = new Intent(this, BedtimeLockActivity.class);
             startActivity(lock);
             return;
@@ -210,10 +210,8 @@ public class MainActivity extends Activity {
         if (dpm == null || !dpm.isDeviceOwnerApp(getPackageName())) return;
 
         try {
-            getSharedPreferences("cfg", MODE_PRIVATE).edit()
-                .putBoolean("last_active", false)
-                .putBoolean("setup_complete", false)
-                .apply();
+            BedtimeStorage.setLastActive(this, false);
+            BedtimeStorage.setSetup(this, getSharedPreferences("cfg", MODE_PRIVATE).getString("backend", ""), getSharedPreferences("cfg", MODE_PRIVATE).getString("child", "child-001"), false);
             stopService(new Intent(this, BedtimeMonitorService.class));
             try {
                 Intent unlock = new Intent(this, BedtimeLockActivity.class);
