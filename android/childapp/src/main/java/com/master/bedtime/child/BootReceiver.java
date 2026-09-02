@@ -17,12 +17,16 @@ public class BootReceiver extends BroadcastReceiver {
             !Intent.ACTION_MY_PACKAGE_REPLACED.equals(action) &&
             !Intent.ACTION_USER_UNLOCKED.equals(action)) return;
 
-        boolean setupComplete = context.getSharedPreferences("cfg", Context.MODE_PRIVATE)
-            .getBoolean("setup_complete", false);
+        // Copy any newer normal-storage settings into boot-safe storage after unlock.
+        if (Intent.ACTION_USER_UNLOCKED.equals(action) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
+            BedtimeStorage.mirror(context);
+        }
+
+        android.content.SharedPreferences cfg = BedtimeStorage.prefs(context);
+        boolean setupComplete = cfg.getBoolean("setup_complete", false);
         if (!setupComplete) return;
 
-        boolean active = context.getSharedPreferences("cfg", Context.MODE_PRIVATE)
-            .getBoolean("last_active", false);
+        boolean active = cfg.getBoolean("last_active", false);
 
         try {
             Intent service = new Intent(context, BedtimeMonitorService.class);
@@ -33,13 +37,13 @@ public class BootReceiver extends BroadcastReceiver {
             Log.e(TAG, "Unable to restart monitor after " + action, e);
         }
 
-        if (!active) return;
+        if (!active || !Intent.ACTION_USER_UNLOCKED.equals(action) && !Intent.ACTION_BOOT_COMPLETED.equals(action)) return;
 
         DevicePolicyManager dpm = (DevicePolicyManager)
             context.getSystemService(Context.DEVICE_POLICY_SERVICE);
         boolean deviceOwner = dpm != null && dpm.isDeviceOwnerApp(context.getPackageName());
 
-        if (deviceOwner) {
+        if (deviceOwner && !Intent.ACTION_BOOT_COMPLETED.equals(action)) {
             try {
                 Intent lock = new Intent(context, BedtimeLockActivity.class);
                 lock.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK |
