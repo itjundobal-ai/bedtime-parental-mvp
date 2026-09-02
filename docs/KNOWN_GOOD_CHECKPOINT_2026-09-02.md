@@ -35,7 +35,7 @@ Fix:
 - The public Worker URL and `/api/children/:childId/bedtime` endpoint remained unchanged, so the already-installed Android APK did not need a backend URL change.
 - Deployment confirmed Wrangler binding output:
   `env.BEDTIME_STATE_DO (BedtimeState) Durable Object`
-- Confirmed deployed Worker version during the test: `96fc5576-ca17-4f49-bdda-a627fc7905a1`.
+- Current pairing-era deployment verified with Worker version `beb18d2e-ab60-472d-8dbe-7ef22b6443f8`.
 
 Measured result after Durable Object deployment:
 - BEDTIME ON: approximately **2 seconds**.
@@ -131,7 +131,7 @@ Healthy online polling shows:
 ## Tested devices / child IDs
 - Realme: Device Owner successfully provisioned and online lock/unlock tested.
 - TECNO: after factory reset, latest signed APK installed to user 0 and Device Owner successfully provisioned.
-- Use distinct Child IDs per phone (for example `child-001`, `child-002`) so one dashboard command does not control both unintentionally.
+- Use distinct Child IDs per phone so one dashboard command does not control both unintentionally.
 
 ## Known problems already found and fixed
 1. Old TECNO install used a different/lost signing key; factory reset/reprovision was required. This was a signing-key mismatch, not a Device Owner bypass.
@@ -147,26 +147,134 @@ Development branch: `feature/single-apk-parent-child`.
 
 Implemented / tested:
 - First-open role selector with `PARENT` and `CHILD`.
-- PARENT native dashboard with Child ID, BEDTIME ON, BEDTIME OFF, and status refresh.
-- Parent command retry + server-state verification.
-- CHILD setup flow retained.
+- PARENT native dashboard.
+- Secure Pair Child flow added.
+- CHILD generates a pairing code; PARENT enters it to bind the child.
+- CHILD receives a secure child credential for authenticated monitor traffic.
+- Parent dashboard stores/shows the child recovery code after pairing.
 - Child monitor recovery/persistence work continued on the same branch.
-- Durable Object backend migration completed on this branch and deployed successfully.
+- Durable Object backend migration completed and deployed successfully.
 
 Role behavior:
-- `adb install -r` is an update and preserves app data/selected role.
-- Full uninstall normally clears app data, but strict "always choose role again after reinstall" should also account for Android backup/restore behavior before release.
+- `adb install -r` is an update and preserves app data/selected role and, with the permanent signer, preserves Device Owner state.
+- Full uninstall normally clears app data and removes Device Owner only after intentional managed release; do not uninstall during normal upgrade testing.
+
+## Verified hardening and rollback history
+### Ordinary uninstall block
+Problem / requirement:
+- A completed CHILD device must not be casually uninstalled from Android Settings.
+
+Fix:
+- Completed managed CHILD calls Device Policy Manager `setUninstallBlocked(..., true)`.
+- Sensitive setup/test controls are hidden after setup completion.
+
+Verification:
+- On real device, Android Settings → Apps → Bedtime showed Uninstall disabled/not pressable.
+- This is a verified success.
+
+### Parent/Admin recovery release
+Problem / requirement:
+- Strong Device Owner protection must have an intentional parent/admin recovery path so the device is not permanently trapped during testing or emergency maintenance.
+
+Fix:
+- Hidden recovery entry is exposed by long-pressing the protected status area.
+- CHILD asks for a 6-digit Parent/Admin recovery code.
+- Correct code can stop the monitor, clear active bedtime state, remove uninstall block, and release Device Owner on the tested device.
+
+Verification:
+- Recovery prompt accepted the correct code.
+- Device Owner was released.
+- Android Settings then enabled Uninstall.
+- App was successfully uninstalled.
+- This full rollback path is verified on the tested phone.
+
+Important limitation:
+- `clearDeviceOwnerApp()` behavior can vary by Android/OEM/API. It worked on the tested phone; do not assume identical behavior on every OEM without testing.
+
+## Pairing and recovery code behavior
+- Pairing code and recovery code are intentionally different.
+- Pairing code is for binding a CHILD to the PARENT app.
+- Recovery code is the persistent Parent/Admin emergency credential shown in the Parent dashboard.
+- The recovery code is the code typed into the CHILD hidden Parent/Admin Recovery prompt.
+- A pairing code must not be treated as an admin-release credential.
+
+## Legacy CHILD upgrade migration — troubleshooting ledger
+### Problem 1: new pairing button did not appear on an already-completed CHILD
+Symptom:
+- New APK was installed with `adb install -r`.
+- PARENT already showed Pair Child, but CHILD showed the old completed protected UI and no Generate Pairing Code button.
+
+Initial suspicion:
+- An old APK may have been installed from Downloads.
+
+Root cause after code inspection:
+- The upgrade preserved `setup_complete=true` from the older CHILD build.
+- `refreshSetupState()` correctly detected that no child token existed, but the later `if (setupComplete)` branch immediately called the hardened completed UI and hid the pairing controls.
+
+Fix:
+- Added legacy completed-setup migration logic for devices that are complete but have no secure child token.
+- Build #50 / commit `657a894` introduced the migration path.
+
+Verification:
+- After updating, Generate Pairing Code appeared on the existing managed CHILD without uninstalling or reprovisioning Device Owner.
+
+### Problem 2: migration exposed all setup/test controls
+Symptom:
+- After Build #50, pairing became available but the CHILD also exposed backend, Child ID, test/release and other setup controls.
+
+Root cause:
+- The first migration implementation temporarily changed the old completed device to a normal incomplete setup state, so the general setup UI became visible.
+
+Fix:
+- Added a dedicated locked-down legacy pairing migration UI.
+- Only pairing-related controls and required monitor continuation controls are exposed.
+- Backend, Child ID, test, Device Owner release, and other sensitive setup controls remain hidden.
+- Build #51 / commit `128f393` (`Keep legacy child migration locked down during pairing`) completed successfully.
+
+Verification:
+- Real-device update showed only the expected pairing flow and Start Bedtime Monitor control.
+- User confirmed the flow is functional.
+- After pairing/monitor completion, the CHILD returns to the protected hidden-control state.
+
+## Current verified functional flow
+As of the Build #51 checkpoint, the following has been confirmed working in real-device testing:
+- One signed APK supports PARENT and CHILD roles.
+- Device Owner strong mode works.
+- Remote Bedtime ON/OFF works with Durable Object latency around a few seconds.
+- Full red Lock Task bedtime screen works.
+- Physical side power button still turns the display off/on.
+- Ordinary app uninstall is blocked on a completed managed CHILD.
+- Hidden Parent/Admin Recovery remains active.
+- Correct Parent recovery code can release the tested CHILD for maintenance/uninstall.
+- Secure pairing works: CHILD generates pairing code, PARENT pairs the child, and Parent displays the separate 6-digit recovery code.
+- Existing legacy CHILD installs can be upgraded with `adb install -r` without losing Device Owner.
+- Legacy migration now exposes only the minimum pairing controls instead of reopening all sensitive setup controls.
+- User confirmed the pairing / monitoring flow is functional end-to-end.
+
+## Troubleshooting principles to preserve
+For every future issue, keep this sequence in the report:
+1. Original assumption / expected behavior.
+2. Actual symptom and logs.
+3. Root cause found.
+4. Exact fix applied.
+5. Real-device verification result.
+6. Rollback or recovery procedure if applicable.
+
+Do not remove failed attempts from the history when they helped identify the real cause. The goal is to preserve the difficult lessons so the same problem does not have to be rediscovered.
 
 ## Current baseline / next milestone
-Current confirmed baseline after the Durable Object migration:
-- Strong Device Owner + Lock Task bedtime screen works.
-- Remote backend is online.
-- Child polling can run at about 1-second intervals.
-- Remote response measured at roughly 2 seconds ON and 3–4 seconds OFF.
-- This latency is acceptable for the current MVP and should be preserved as a rollback/reference point.
+Current protected baseline:
+- Durable Object command path must remain.
+- Permanent signing pipeline must remain.
+- Device Owner + Lock Task behavior must remain.
+- Anti-uninstall and hidden Parent/Admin Recovery must remain.
+- Secure Pair Child + separate Parent recovery code must remain.
+- Legacy upgrade migration must remain locked down.
 
-Next priorities should favor stability over unnecessary simultaneous changes:
-- keep the Durable Object command path;
-- continue verifying monitor persistence after normal task swipe, reboot, and signed APK update;
-- verify distinct Child IDs on multiple phones;
-- later add secure parent pairing/authentication and optional child-online/ack status.
+Next milestone:
+- Multiple children / Add Child dashboard.
+- Per-child Bedtime control and recovery-code display.
+- Child #1 one-day free trial.
+- Child #2 and additional children payment gating.
+- Trial expiry / fail-safe OFF rules.
+- Later QR payment flow.
