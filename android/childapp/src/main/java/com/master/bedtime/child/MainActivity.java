@@ -31,6 +31,7 @@ import java.util.UUID;
 public class MainActivity extends Activity {
     private static final String CFG = "cfg";
     private static final String KEY_RECOVERY_PIN = "parent_recovery_pin";
+    private static final String KEY_BATTERY_CONFIRMED = "battery_settings_confirmed";
 
     private EditText backend;
     private EditText child;
@@ -166,6 +167,7 @@ public class MainActivity extends Activity {
         boolean accountsConfirmed = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("accounts_confirmed", false);
         boolean setupComplete = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("setup_complete", false);
         boolean legacyPairingMigration = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("legacy_pairing_migration", false);
+        boolean batteryConfirmed = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean(KEY_BATTERY_CONFIRMED, false);
         boolean owner = isDeviceOwner();
         boolean hasChildToken = !getSharedPreferences(CFG, MODE_PRIVATE).getString("child_token", "").isEmpty();
 
@@ -181,10 +183,14 @@ public class MainActivity extends Activity {
             setupStep.setText(legacyPairingMigration ? "SECURE PAIRING REQUIRED" : "STEP 3 OF 6 — Generate pairing code");
             deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
             deviceOwnerHelp.setText("Generate a pairing code, then enter that 6-digit code in the PARENT app. The Parent app will automatically receive and store the recovery code.");
-        } else if (!setupComplete) {
-            setupStep.setText(legacyPairingMigration ? "PAIRING READY — Finish protected setup" : "STEP 4 OF 6 — Start monitor");
+        } else if (!batteryConfirmed) {
+            setupStep.setText(legacyPairingMigration ? "PAIRING READY — Battery setup required" : "STEP 4 OF 6 — Battery / background settings");
             deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
-            deviceOwnerHelp.setText("Pairing credential created. Start the Bedtime monitor to finish the protected child migration.");
+            deviceOwnerHelp.setText("Set this app to Unrestricted / No restrictions / Allow background activity first. Then confirm the battery step before starting the Bedtime monitor.");
+        } else if (!setupComplete) {
+            setupStep.setText(legacyPairingMigration ? "BATTERY READY — Finish protected setup" : "STEP 5 OF 6 — Start Bedtime monitor");
+            deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
+            deviceOwnerHelp.setText("Battery/background setup confirmed. Start the Bedtime monitor to finish protected CHILD setup.");
         } else {
             setupStep.setText("SETUP COMPLETE — Child device protected");
             deviceOwnerStatus.setText(owner ? "Device Owner: ACTIVE ✓" : "Managed protection needs attention");
@@ -200,7 +206,7 @@ public class MainActivity extends Activity {
         }
 
         if (legacyPairingMigration) {
-            showLegacyPairingMigrationUi(owner, hasChildToken);
+            showLegacyPairingMigrationUi(owner, hasChildToken, batteryConfirmed);
             return;
         }
 
@@ -218,12 +224,13 @@ public class MainActivity extends Activity {
         releaseDeviceOwner.setVisibility(owner ? View.VISIBLE : View.GONE);
 
         generatePairing.setEnabled(accountsConfirmed && owner);
-        start.setEnabled(accountsConfirmed && (owner ? hasChildToken : Settings.canDrawOverlays(this)));
-        batterySettings.setEnabled(accountsConfirmed);
+        batterySettings.setEnabled(accountsConfirmed && (owner ? hasChildToken : true));
+        batterySettings.setText(batteryConfirmed ? "BATTERY / BACKGROUND SETTINGS ✓" : "BATTERY / BACKGROUND SETTINGS — DO THIS FIRST");
+        start.setEnabled(accountsConfirmed && batteryConfirmed && (owner ? hasChildToken : Settings.canDrawOverlays(this)));
         test.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
     }
 
-    private void showLegacyPairingMigrationUi(boolean owner, boolean hasChildToken) {
+    private void showLegacyPairingMigrationUi(boolean owner, boolean hasChildToken, boolean batteryConfirmed) {
         accounts.setVisibility(View.GONE);
         continueSetup.setVisibility(View.GONE);
         backend.setVisibility(View.GONE);
@@ -231,17 +238,22 @@ public class MainActivity extends Activity {
         permission.setVisibility(View.GONE);
         test.setVisibility(View.GONE);
         releaseDeviceOwner.setVisibility(View.GONE);
-        batterySettings.setVisibility(View.GONE);
         restoreAccounts.setVisibility(View.GONE);
 
         generatePairing.setVisibility(owner && !hasChildToken ? View.VISIBLE : View.GONE);
         generatePairing.setEnabled(owner && !hasChildToken);
         pairingCode.setVisibility(owner ? View.VISIBLE : View.GONE);
+
+        batterySettings.setVisibility(owner && hasChildToken ? View.VISIBLE : View.GONE);
+        batterySettings.setEnabled(owner && hasChildToken);
+        batterySettings.setText(batteryConfirmed ? "BATTERY / BACKGROUND SETTINGS ✓" : "BATTERY / BACKGROUND SETTINGS — DO THIS FIRST");
+
         start.setVisibility(owner && hasChildToken ? View.VISIBLE : View.GONE);
-        start.setEnabled(owner && hasChildToken);
+        start.setEnabled(owner && hasChildToken && batteryConfirmed);
 
         status.setText(owner
-            ? (hasChildToken ? "PAIRING READY — Tap START BEDTIME MONITOR" : "PROTECTED MIGRATION — Pair this child with the parent")
+            ? (!hasChildToken ? "PROTECTED MIGRATION — Pair this child with the parent"
+                : (batteryConfirmed ? "BATTERY READY — Tap START BEDTIME MONITOR" : "PAIRING READY — Complete battery settings first"))
             : "ATTENTION — Device Owner protection is not active");
     }
 
@@ -384,6 +396,11 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Generate the pairing code first.", Toast.LENGTH_LONG).show();
             return;
         }
+        if (!getSharedPreferences(CFG, MODE_PRIVATE).getBoolean(KEY_BATTERY_CONFIRMED, false)) {
+            Toast.makeText(this, "Complete BATTERY / BACKGROUND SETTINGS first.", Toast.LENGTH_LONG).show();
+            showBatterySettingsGuide();
+            return;
+        }
         if (!owner && !Settings.canDrawOverlays(this)) {
             Toast.makeText(this, "Allow Display over other apps first for fallback mode.", Toast.LENGTH_LONG).show();
             return;
@@ -410,8 +427,13 @@ public class MainActivity extends Activity {
     private void showBatterySettingsGuide() {
         new AlertDialog.Builder(this)
             .setTitle("Battery / Background Settings")
-            .setMessage("Choose Unrestricted / No restrictions / Allow background activity / Don't optimize if available.")
+            .setMessage("1) Open App Settings.\n2) Set Unrestricted / No restrictions / Allow background activity / Don't optimize if available.\n3) Return here, open this step again, then tap BATTERY SETUP DONE.\n\nSTART BEDTIME MONITOR stays disabled until this step is confirmed.")
             .setNegativeButton("CANCEL", null)
+            .setNeutralButton("BATTERY SETUP DONE", (dialog, which) -> {
+                getSharedPreferences(CFG, MODE_PRIVATE).edit().putBoolean(KEY_BATTERY_CONFIRMED, true).apply();
+                Toast.makeText(this, "Battery/background step confirmed. You can now start the Bedtime monitor.", Toast.LENGTH_LONG).show();
+                refreshSetupState();
+            })
             .setPositiveButton("OPEN APP SETTINGS", (dialog, which) -> openAppBatterySettings())
             .show();
     }
@@ -458,6 +480,7 @@ public class MainActivity extends Activity {
             dpm.clearDeviceOwnerApp(getPackageName());
             getSharedPreferences(CFG, MODE_PRIVATE).edit()
                 .remove(KEY_RECOVERY_PIN)
+                .remove(KEY_BATTERY_CONFIRMED)
                 .remove("child_token")
                 .remove("pair_code")
                 .remove("legacy_pairing_migration")
