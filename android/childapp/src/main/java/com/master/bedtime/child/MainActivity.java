@@ -110,7 +110,8 @@ public class MainActivity extends Activity {
         });
 
         if (!getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("account_reminder_seen", false)
-            && !getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("setup_complete", false)) showAccountPreparationReminder();
+            && !getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("setup_complete", false)
+            && !getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("legacy_pairing_migration", false)) showAccountPreparationReminder();
 
         refreshSetupState();
         autoStartConfiguredMonitor();
@@ -164,10 +165,11 @@ public class MainActivity extends Activity {
     private void refreshSetupState() {
         boolean accountsConfirmed = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("accounts_confirmed", false);
         boolean setupComplete = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("setup_complete", false);
+        boolean legacyPairingMigration = getSharedPreferences(CFG, MODE_PRIVATE).getBoolean("legacy_pairing_migration", false);
         boolean owner = isDeviceOwner();
         boolean hasChildToken = !getSharedPreferences(CFG, MODE_PRIVATE).getString("child_token", "").isEmpty();
 
-        if (!accountsConfirmed) {
+        if (!accountsConfirmed && !legacyPairingMigration) {
             setupStep.setText("STEP 1 OF 6 — Remove saved accounts");
             deviceOwnerStatus.setText("Device Owner: waiting for account preparation");
             deviceOwnerHelp.setText("Pagkatapos alisin ang accounts, bumalik dito at pindutin ang TAPOS NA — CONTINUE SETUP.");
@@ -176,13 +178,13 @@ public class MainActivity extends Activity {
             deviceOwnerStatus.setText("Device Owner: NOT ACTIVE");
             deviceOwnerHelp.setText("Ikonekta ang phone sa PC at patakbuhin:\n\nadb shell dpm set-device-owner com.master.bedtime.child/.BedtimeDeviceAdminReceiver\n\nPag success, bumalik sa app.");
         } else if (!hasChildToken) {
-            setupStep.setText("STEP 3 OF 6 — Generate pairing code");
+            setupStep.setText(legacyPairingMigration ? "SECURE PAIRING REQUIRED" : "STEP 3 OF 6 — Generate pairing code");
             deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
             deviceOwnerHelp.setText("Generate a pairing code, then enter that 6-digit code in the PARENT app. The Parent app will automatically receive and store the recovery code.");
         } else if (!setupComplete) {
-            setupStep.setText("STEP 4 OF 6 — Start monitor");
+            setupStep.setText(legacyPairingMigration ? "PAIRING READY — Finish protected setup" : "STEP 4 OF 6 — Start monitor");
             deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
-            deviceOwnerHelp.setText("Pairing credential created. After the Parent enters the code, start the Bedtime monitor and finish Battery / Background settings.");
+            deviceOwnerHelp.setText("Pairing credential created. Start the Bedtime monitor to finish the protected child migration.");
         } else {
             setupStep.setText("SETUP COMPLETE — Child device protected");
             deviceOwnerStatus.setText(owner ? "Device Owner: ACTIVE ✓" : "Managed protection needs attention");
@@ -194,6 +196,11 @@ public class MainActivity extends Activity {
         if (setupComplete) {
             applyCompletedChildProtection(owner);
             showCompletedChildUi(owner);
+            return;
+        }
+
+        if (legacyPairingMigration) {
+            showLegacyPairingMigrationUi(owner, hasChildToken);
             return;
         }
 
@@ -214,6 +221,28 @@ public class MainActivity extends Activity {
         start.setEnabled(accountsConfirmed && (owner ? hasChildToken : Settings.canDrawOverlays(this)));
         batterySettings.setEnabled(accountsConfirmed);
         test.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
+    }
+
+    private void showLegacyPairingMigrationUi(boolean owner, boolean hasChildToken) {
+        accounts.setVisibility(View.GONE);
+        continueSetup.setVisibility(View.GONE);
+        backend.setVisibility(View.GONE);
+        child.setVisibility(View.GONE);
+        permission.setVisibility(View.GONE);
+        test.setVisibility(View.GONE);
+        releaseDeviceOwner.setVisibility(View.GONE);
+        batterySettings.setVisibility(View.GONE);
+        restoreAccounts.setVisibility(View.GONE);
+
+        generatePairing.setVisibility(owner && !hasChildToken ? View.VISIBLE : View.GONE);
+        generatePairing.setEnabled(owner && !hasChildToken);
+        pairingCode.setVisibility(owner ? View.VISIBLE : View.GONE);
+        start.setVisibility(owner && hasChildToken ? View.VISIBLE : View.GONE);
+        start.setEnabled(owner && hasChildToken);
+
+        status.setText(owner
+            ? (hasChildToken ? "PAIRING READY — Tap START BEDTIME MONITOR" : "PROTECTED MIGRATION — Pair this child with the parent")
+            : "ATTENTION — Device Owner protection is not active");
     }
 
     private void showCompletedChildUi(boolean owner) {
@@ -292,6 +321,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     pairingCode.setText("PAIRING CODE: " + pair + "\nEnter this in the PARENT app.");
                     generatePairing.setEnabled(true);
+                    refreshSetupState();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
