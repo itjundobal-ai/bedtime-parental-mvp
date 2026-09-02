@@ -6,6 +6,7 @@ on:
     branches: [ main ]
     paths:
       - 'android/parentapp/**'
+      - 'android/settings.gradle.kts'
       - '.github/workflows/build-parent-apk.yml'
 
 jobs:
