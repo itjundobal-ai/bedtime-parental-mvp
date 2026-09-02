@@ -61,8 +61,12 @@ public class BedtimeMonitorService extends Service {
         return dpm != null && dpm.isDeviceOwnerApp(getPackageName());
     }
 
+    private SharedPreferences cfg() {
+        return BedtimeStorage.prefs(this);
+    }
+
     private boolean setupComplete() {
-        return getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
+        return cfg().getBoolean("setup_complete", false);
     }
 
     private void scheduleRestart() {
@@ -148,13 +152,14 @@ public class BedtimeMonitorService extends Service {
         while (running) {
             HttpURLConnection c = null;
             try {
-                SharedPreferences p = getSharedPreferences("cfg", MODE_PRIVATE);
+                SharedPreferences p = cfg();
                 String savedBase = p.getString("backend", "");
                 String base = normalizeBackend(savedBase);
                 String child = p.getString("child", "child-001");
 
                 if (!base.equals(savedBase)) {
                     p.edit().putString("backend", base).apply();
+                    getSharedPreferences("cfg", MODE_PRIVATE).edit().putString("backend", base).apply();
                     Log.i(TAG, "Normalized backend URL to " + base);
                 }
 
@@ -179,6 +184,11 @@ public class BedtimeMonitorService extends Service {
                         boolean active = state.optBoolean("active", false);
                         boolean allowPowerControls = state.optBoolean("allowPowerControls", false);
                         p.edit()
+                            .putBoolean("last_active", active)
+                            .putBoolean("allow_power_controls", allowPowerControls)
+                            .putLong("last_poll_ok_at", System.currentTimeMillis())
+                            .apply();
+                        getSharedPreferences("cfg", MODE_PRIVATE).edit()
                             .putBoolean("last_active", active)
                             .putBoolean("allow_power_controls", allowPowerControls)
                             .putLong("last_poll_ok_at", System.currentTimeMillis())
