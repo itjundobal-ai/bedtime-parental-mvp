@@ -10,8 +10,7 @@ public class MonitorRestartReceiver extends BroadcastReceiver {
     private static final String TAG = "BedtimeRestart";
 
     @Override public void onReceive(Context context, Intent intent) {
-        boolean setupComplete = context.getSharedPreferences("cfg", Context.MODE_PRIVATE)
-            .getBoolean("setup_complete", false);
+        boolean setupComplete = BedtimeStorage.prefs(context).getBoolean("setup_complete", false);
         if (!setupComplete) return;
 
         try {
