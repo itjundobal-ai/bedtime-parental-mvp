@@ -1,3 +1,4 @@
+// Redeploy marker: keep child state GET public; protect parent writes only.
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
