@@ -35,3 +35,7 @@ android {
         }
     }
 }
+
+dependencies {
+    implementation(project(":childapp"))
+}
