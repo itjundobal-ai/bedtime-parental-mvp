@@ -178,11 +178,20 @@ public class ParentActivity extends Activity {
         return pin;
     }
 
+    private String ensureChildId() {
+        String existing = childId.getText().toString().trim();
+        if (!existing.isEmpty()) return existing;
+        SecureRandom random = new SecureRandom();
+        return "child-" + String.format(java.util.Locale.US, "%06d", random.nextInt(1000000));
+    }
+
     private void generatePairingCode() {
-        final String child = childId.getText().toString().trim();
+        // PARENT starts pairing. CHILD never supplies a pairing code to the Parent.
+        final String child = ensureChildId();
+        childId.setText(child);
         if (!child.matches("[A-Za-z0-9._-]{1,80}")) { childId.setError("Enter a valid Child ID"); return; }
         setControlsForPairing(true);
-        status.setText("Generating secure pairing code...");
+        status.setText("Generating NEW 6-digit pairing code...");
         generatedCode.setText("PAIRING CODE: generating...");
         final String recovery = ensureParentRecoveryPin();
         new Thread(() -> {
@@ -203,7 +212,7 @@ public class ParentActivity extends Activity {
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("child", child).putString("parent_token", token).putString("recovery_pin", recovery).apply();
                 main.post(() -> {
                     generatedCode.setText("PAIRING CODE: " + pair + "\nGive this code to the CHILD phone.");
-                    status.setText("CODE READY ✓ — Enter it on CHILD");
+                    status.setText("CODE READY ✓ — CHILD enters this 6-digit code");
                     pairButton.setEnabled(true); childId.setEnabled(true);
                     onButton.setEnabled(false); offButton.setEnabled(false); refreshButton.setEnabled(false);
                 });
@@ -260,7 +269,7 @@ public class ParentActivity extends Activity {
     }
 
     private void refreshState() {
-        if (!hasPairedChild()) { status.setText("Generate a pairing code to begin"); setControlsForPairing(false); return; }
+        if (!hasPairedChild()) { status.setText("Generate a NEW pairing code to begin"); setControlsForPairing(false); return; }
         final String child = selectedChild(); setBusy(true); status.setText("Checking state...");
         new Thread(() -> {
             try { boolean state = getState(child); main.post(() -> { status.setText(state ? "BEDTIME ON" : "BEDTIME OFF"); setBusy(false); }); }
