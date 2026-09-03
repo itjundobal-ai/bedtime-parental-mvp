@@ -41,7 +41,7 @@ public class MainActivity extends Activity {
         backend.setText(getPreferences(MODE_PRIVATE).getString("backend","https://bedtime-parental-api.itjundobal.workers.dev")); child.setText(getPreferences(MODE_PRIVATE).getString("child","child-001"));
         LinearLayout root=(LinearLayout)status.getParent();
         TextView pairCode=new TextView(this); pairCode.setGravity(Gravity.CENTER); pairCode.setTextSize(28); pairCode.setText("No pairing code yet");
-        Button generate=new Button(this); generate.setText("GENERATE CHILD PAIRING CODE");
+        Button generate=new Button(this); generate.setText("GENERATE 6-DIGIT CHILD PAIRING CODE");
         TextView pairStatus=new TextView(this); pairStatus.setText("Generate a code, then enter it on the Child phone. Code expires in 15 minutes.");
         root.addView(pairCode,0); root.addView(generate,1); root.addView(pairStatus,2);
         generate.setOnClickListener(v->generatePairing(backend,child,pairCode,pairStatus));
