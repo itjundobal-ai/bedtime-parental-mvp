@@ -20,25 +20,54 @@ jobs:
         working-directory: android
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
       - name: Install Android SDK 36
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
-      - name: Build universal Parent + Child APK
-        run: gradle :parentapp:assembleDebug --stacktrace
-      - name: Verify universal APK exists
-        run: test -s parentapp/build/outputs/apk/debug/parentapp-debug.apk
-      - name: Upload universal APK
+
+      - name: Validate signing secrets
+        env:
+          BEDTIME_KEYSTORE_B64: ${{ secrets.BEDTIME_KEYSTORE_B64 }}
+          BEDTIME_KEYSTORE_PASSWORD: ${{ secrets.BEDTIME_KEYSTORE_PASSWORD }}
+          BEDTIME_KEY_ALIAS: ${{ secrets.BEDTIME_KEY_ALIAS }}
+          BEDTIME_KEY_PASSWORD: ${{ secrets.BEDTIME_KEY_PASSWORD }}
+        run: |
+          test -n "$BEDTIME_KEYSTORE_B64" || (echo "Missing BEDTIME_KEYSTORE_B64" && exit 1)
+          test -n "$BEDTIME_KEYSTORE_PASSWORD" || (echo "Missing BEDTIME_KEYSTORE_PASSWORD" && exit 1)
+          test -n "$BEDTIME_KEY_ALIAS" || (echo "Missing BEDTIME_KEY_ALIAS" && exit 1)
+          test -n "$BEDTIME_KEY_PASSWORD" || (echo "Missing BEDTIME_KEY_PASSWORD" && exit 1)
+
+      - name: Restore permanent signing keystore
+        env:
+          BEDTIME_KEYSTORE_B64: ${{ secrets.BEDTIME_KEYSTORE_B64 }}
+        run: echo "$BEDTIME_KEYSTORE_B64" | base64 --decode > bedtime-release.jks
+
+      - name: Build signed universal Parent + Child APK
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          BEDTIME_KEYSTORE_PASSWORD: ${{ secrets.BEDTIME_KEYSTORE_PASSWORD }}
+          BEDTIME_KEY_ALIAS: ${{ secrets.BEDTIME_KEY_ALIAS }}
+          BEDTIME_KEY_PASSWORD: ${{ secrets.BEDTIME_KEY_PASSWORD }}
+        run: gradle :parentapp:assembleRelease --stacktrace
+
+      - name: Verify signed universal APK exists
+        run: test -s parentapp/build/outputs/apk/release/parentapp-release.apk
+
+      - name: Upload signed universal APK
         uses: actions/upload-artifact@v4
         with:
           name: bedtime-parent-new-apk
-          path: android/parentapp/build/outputs/apk/debug/parentapp-debug.apk
+          path: android/parentapp/build/outputs/apk/release/parentapp-release.apk
