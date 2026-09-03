@@ -11,17 +11,20 @@
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Parent Bedtime Control" android:textSize="28sp" android:textStyle="bold" />
         <TextView android:id="@+id/legacyOwnerWarning" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:gravity="center" android:text="OLD CHILD PROTECTION DETECTED — This phone is still Device Owner. Release it before uninstalling or using this phone only as PARENT." android:textStyle="bold" android:visibility="gone" />
         <Button android:id="@+id/btnReleaseOldChildProtection" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="RELEASE OLD CHILD PROTECTION" android:visibility="gone" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="PARENT → GENERATE PAIRING CODE" android:textStyle="bold" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="The Parent creates the 6-digit code. The Child never generates the code." />
-        <EditText android:id="@+id/parentChildId" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="Child ID (optional — auto-generated)" android:enabled="true" />
-        <Button android:id="@+id/btnPairChild" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="GENERATE NEW 6-DIGIT PAIRING CODE" />
-        <TextView android:id="@+id/parentGeneratedCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center" android:text="PAIRING CODE: not generated" android:textSize="22sp" android:textStyle="bold" />
+
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="PARENT PAIRING" android:textStyle="bold" android:textSize="20sp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="Fresh Parent install automatically generates the first 6-digit code. Give that code to the CHILD phone. ADD CHILD appears only after pairing succeeds." />
+
+        <EditText android:id="@+id/parentChildId" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="Child ID (auto-generated)" android:visibility="gone" />
+        <Button android:id="@+id/btnPairChild" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="ADD CHILD — GENERATE NEW 6-DIGIT CODE" android:visibility="gone" />
+        <TextView android:id="@+id/parentGeneratedCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:gravity="center" android:text="Generating first 6-digit pairing code..." android:textSize="24sp" android:textStyle="bold" />
         <EditText android:id="@+id/parentPairCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:visibility="gone" />
         <TextView android:id="@+id/parentRecoveryCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Recovery code: not generated" android:textStyle="bold" />
-        <TextView android:id="@+id/parentStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:gravity="center" android:text="Generate a NEW pairing code to begin" android:textSize="18sp" android:textStyle="bold" />
+        <TextView android:id="@+id/parentStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:gravity="center" android:text="Generating first 6-digit pairing code..." android:textSize="18sp" android:textStyle="bold" />
+
         <Button android:id="@+id/btnBedtimeOn" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:text="BEDTIME ON" />
         <Button android:id="@+id/btnBedtimeOff" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="BEDTIME OFF" />
         <Button android:id="@+id/btnRefreshState" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="REFRESH STATUS" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:gravity="center" android:text="FLOW: PARENT generates a new 6-digit code → CHILD enters the code after CHILD ACTIVE ✓." android:textSize="14sp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:gravity="center" android:text="FLOW: FRESH PARENT → AUTO-GENERATE 6-DIGIT CODE → CHILD enters code → PAIRING SUCCESS → ADD CHILD appears." android:textSize="14sp" />
     </LinearLayout>
 </ScrollView>
