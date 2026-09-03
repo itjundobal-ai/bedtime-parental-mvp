@@ -1,3 +1,4 @@
+// Pairing API redeploy marker: keep Parent -> Generate Code endpoint live.
 export class BedtimeState {
   constructor(state, env) {
     this.state = state;
