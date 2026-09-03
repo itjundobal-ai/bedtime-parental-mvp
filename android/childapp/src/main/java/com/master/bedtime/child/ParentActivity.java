@@ -47,6 +47,7 @@ public class ParentActivity extends Activity {
     private DevicePolicyManager dpm;
     private ComponentName admin;
     private final Handler main = new Handler(Looper.getMainLooper());
+    private volatile boolean pairingPolling;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -74,7 +75,16 @@ public class ParentActivity extends Activity {
         releaseOldChildProtection.setOnClickListener(v -> showOldChildRecoveryPrompt());
 
         refreshDeviceOwnerRecoveryState();
-        if (hasPairedChild()) refreshState(); else setControlsForPairing(false);
+        if (hasPairedChild()) {
+            pairButton.setVisibility(View.VISIBLE);
+            pairButton.setText("ADD CHILD — GENERATE NEW 6-DIGIT CODE");
+            refreshState();
+        } else {
+            // Fresh Parent install: no ADD CHILD button yet. Generate the first code automatically.
+            pairButton.setVisibility(View.GONE);
+            setControlsForPairing(false);
+            main.postDelayed(this::generatePairingCode, 350L);
+        }
     }
 
     @Override protected void onResume() { super.onResume(); refreshDeviceOwnerRecoveryState(); }
@@ -88,7 +98,8 @@ public class ParentActivity extends Activity {
 
     private boolean hasPairedChild() {
         return !getSharedPreferences(PREFS, MODE_PRIVATE).getString("parent_token", "").isEmpty()
-            && !getSharedPreferences(PREFS, MODE_PRIVATE).getString("child", "").isEmpty();
+            && !getSharedPreferences(PREFS, MODE_PRIVATE).getString("child", "").isEmpty()
+            && getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("paired", false);
     }
 
     private boolean isDeviceOwner() { return dpm != null && dpm.isDeviceOwnerApp(getPackageName()); }
@@ -190,6 +201,8 @@ public class ParentActivity extends Activity {
         final String child = ensureChildId();
         childId.setText(child);
         if (!child.matches("[A-Za-z0-9._-]{1,80}")) { childId.setError("Enter a valid Child ID"); return; }
+        pairingPolling = false;
+        pairButton.setVisibility(View.GONE);
         setControlsForPairing(true);
         status.setText("Generating NEW 6-digit pairing code...");
         generatedCode.setText("PAIRING CODE: generating...");
@@ -209,16 +222,70 @@ public class ParentActivity extends Activity {
                 if (http < 200 || http >= 300) throw new Exception(json.optString("error", "HTTP " + http));
                 String pair = json.getString("pairCode");
                 String token = json.getString("parentToken");
-                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("child", child).putString("parent_token", token).putString("recovery_pin", recovery).apply();
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("child", child).putString("parent_token", token).putString("recovery_pin", recovery).putBoolean("paired", false).apply();
                 main.post(() -> {
                     generatedCode.setText("PAIRING CODE: " + pair + "\nGive this code to the CHILD phone.");
                     status.setText("CODE READY ✓ — CHILD enters this 6-digit code");
-                    pairButton.setEnabled(true); childId.setEnabled(true);
                     onButton.setEnabled(false); offButton.setEnabled(false); refreshButton.setEnabled(false);
                 });
+                pollPairingUntilSuccess(child, token);
             } catch (Exception e) {
-                main.post(() -> { generatedCode.setText("Pairing failed: " + e.getMessage()); status.setText("Pairing code generation failed"); setControlsForPairing(false); });
+                main.post(() -> {
+                    generatedCode.setText("Pairing failed: " + e.getMessage());
+                    status.setText("Pairing code generation failed");
+                    pairButton.setText("GENERATE 6-DIGIT PAIRING CODE");
+                    pairButton.setVisibility(View.VISIBLE);
+                    setControlsForPairing(false);
+                });
             } finally { if (conn != null) conn.disconnect(); }
+        }).start();
+    }
+
+    private void pollPairingUntilSuccess(final String child, final String token) {
+        if (pairingPolling) return;
+        pairingPolling = true;
+        new Thread(() -> {
+            try {
+                for (int attempt = 0; attempt < 300 && pairingPolling; attempt++) {
+                    HttpURLConnection conn = null;
+                    try {
+                        URL url = new URL(DEFAULT_BACKEND + "/api/pairing/status?childId=" + java.net.URLEncoder.encode(child, "UTF-8") + "&t=" + System.currentTimeMillis());
+                        conn = (HttpURLConnection) url.openConnection();
+                        conn.setRequestMethod("GET"); conn.setConnectTimeout(5000); conn.setReadTimeout(5000); conn.setUseCaches(false);
+                        conn.setRequestProperty("Accept", "application/json"); conn.setRequestProperty("Cache-Control", "no-cache"); conn.setRequestProperty("x-parent-token", token);
+                        int http = conn.getResponseCode();
+                        String response = readAnyResponse(conn, http);
+                        if (http >= 200 && http < 300) {
+                            JSONObject json = new JSONObject(response);
+                            if (json.optBoolean("paired", false)) {
+                                pairingPolling = false;
+                                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("paired", true).apply();
+                                main.post(() -> {
+                                    generatedCode.setText("PAIRING SUCCESS ✓ — CHILD linked");
+                                    status.setText("PAIRING SUCCESS ✓ — Add Child is now available");
+                                    pairButton.setText("ADD CHILD — GENERATE NEW 6-DIGIT CODE");
+                                    pairButton.setVisibility(View.VISIBLE);
+                                    childId.setEnabled(true);
+                                    onButton.setEnabled(true); offButton.setEnabled(true); refreshButton.setEnabled(true);
+                                });
+                                return;
+                            }
+                        }
+                    } catch (Exception ignored) {
+                        // Keep polling; transient network failures must not cancel pairing.
+                    } finally { if (conn != null) conn.disconnect(); }
+                    Thread.sleep(2000L);
+                }
+            } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            pairingPolling = false;
+            main.post(() -> {
+                if (!hasPairedChild()) {
+                    status.setText("Pairing code expired or waiting. Generate a new code.");
+                    pairButton.setText("GENERATE NEW 6-DIGIT PAIRING CODE");
+                    pairButton.setVisibility(View.VISIBLE);
+                    setControlsForPairing(false);
+                }
+            });
         }).start();
     }
 
@@ -230,7 +297,7 @@ public class ParentActivity extends Activity {
     }
 
     private void sendBedtime(boolean active) {
-        if (!hasPairedChild()) { Toast.makeText(this, "Generate a pairing code and pair the CHILD first.", Toast.LENGTH_LONG).show(); return; }
+        if (!hasPairedChild()) { Toast.makeText(this, "Pair the CHILD first.", Toast.LENGTH_LONG).show(); return; }
         final String child = selectedChild(); setBusy(true); status.setText(active ? "Sending BEDTIME ON..." : "Sending BEDTIME OFF...");
         new Thread(() -> {
             Exception lastError = null;
@@ -269,7 +336,7 @@ public class ParentActivity extends Activity {
     }
 
     private void refreshState() {
-        if (!hasPairedChild()) { status.setText("Generate a NEW pairing code to begin"); setControlsForPairing(false); return; }
+        if (!hasPairedChild()) { status.setText("Waiting for CHILD to use the 6-digit code"); return; }
         final String child = selectedChild(); setBusy(true); status.setText("Checking state...");
         new Thread(() -> {
             try { boolean state = getState(child); main.post(() -> { status.setText(state ? "BEDTIME ON" : "BEDTIME OFF"); setBusy(false); }); }
