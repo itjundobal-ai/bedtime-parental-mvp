@@ -273,16 +273,33 @@ public class MainActivity extends Activity {
     private void startMonitor() {
         if (!isDeviceOwner()) { Toast.makeText(this, "Activate Device Owner first.", Toast.LENGTH_LONG).show(); return; }
         if (!getSharedPreferences(CFG, MODE_PRIVATE).getBoolean(KEY_BATTERY_CONFIRMED, false)) { Toast.makeText(this, "Complete BATTERY / BACKGROUND SETTINGS first.", Toast.LENGTH_LONG).show(); showBatterySettingsGuide(); return; }
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != getPackageManager().PERMISSION_GRANTED) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);
         String backendValue = normalizeBackend(backend.getText().toString());
         String childValue = child.getText().toString().trim();
-        if (backendValue.isEmpty() || childValue.isEmpty()) return;
-        getSharedPreferences(CFG, MODE_PRIVATE).edit().putString("backend", backendValue).putString("child", childValue).putBoolean("setup_complete", true).apply();
+        if (backendValue.isEmpty() || childValue.isEmpty()) {
+            Toast.makeText(this, "Backend URL and Child ID are required.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        // Save synchronously first. This prevents SAVE & RESTART from appearing to hang
+        // when the Activity is recreated immediately after the setup flag is written.
+        boolean saved = getSharedPreferences(CFG, MODE_PRIVATE).edit()
+                .putString("backend", backendValue)
+                .putString("child", childValue)
+                .putBoolean("setup_complete", true)
+                .commit();
+        if (!saved) {
+            Toast.makeText(this, "Could not save Child setup. Try again.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
         try { startForegroundService(new Intent(this, BedtimeMonitorService.class)); } catch (Exception ignored) {}
         applyCompletedChildProtection(true);
         refreshSetupState();
         Toast.makeText(this, "CHILD ACTIVE ✓ — setup saved.", Toast.LENGTH_LONG).show();
-        new android.os.Handler().postDelayed(() -> { finish(); startActivity(new Intent(this, MainActivity.class)); }, 350);
+
+        // Do not finish/start another Activity here. Recreating the same Activity is safer
+        // on the TECNO/Android build and still gives the user the required restart behavior.
+        new android.os.Handler().postDelayed(this::recreate, 500);
     }
 
     private void showBatterySettingsGuide() {
