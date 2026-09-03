@@ -1,64 +1,15 @@
 package com.master.bedtime.parent;
 
-import android.app.Activity;
-import android.os.Bundle;
-import android.content.Intent;
-import android.view.Gravity;
-import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.Toast;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import org.json.JSONObject;
-
-public class MainActivity extends Activity {
-    private static final String MODE = "selected_role";
-    @Override protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        String role = getPreferences(MODE_PRIVATE).getString(MODE, "");
-        if ("child".equals(role)) launchChild(); else if ("parent".equals(role)) showParentControl(); else showRoleChooser();
-    }
-    private void showRoleChooser() {
-        LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER_HORIZONTAL); root.setPadding(40,60,40,40);
-        TextView title = new TextView(this); title.setText("BEDTIME PARENTAL"); title.setTextSize(30); title.setGravity(Gravity.CENTER); root.addView(title,new LinearLayout.LayoutParams(-1,-2));
-        TextView q = new TextView(this); q.setText("Who are you?\n\nChoose the role for this device."); q.setTextSize(20); q.setGravity(Gravity.CENTER); LinearLayout.LayoutParams qp=new LinearLayout.LayoutParams(-1,-2); qp.topMargin=35; root.addView(q,qp);
-        Button p=new Button(this); p.setText("👨 PARENT"); p.setTextSize(20); LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-1,-2); pp.topMargin=35; root.addView(p,pp);
-        Button c=new Button(this); c.setText("👶 CHILD"); c.setTextSize(20); LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2); cp.topMargin=16; root.addView(c,cp);
-        p.setOnClickListener(v->{getPreferences(MODE_PRIVATE).edit().putString(MODE,"parent").apply();showParentControl();});
-        c.setOnClickListener(v->{getPreferences(MODE_PRIVATE).edit().putString(MODE,"child").apply();launchChild();}); setContentView(root);
-    }
-    private void launchChild(){try{startActivity(new Intent(this,com.master.bedtime.child.MainActivity.class));}catch(Exception e){Toast.makeText(this,"Child mode could not start: "+e.getMessage(),Toast.LENGTH_LONG).show();getPreferences(MODE_PRIVATE).edit().remove(MODE).apply();showRoleChooser();}}
-    private void showParentControl(){
-        setContentView(R.layout.activity_main);
-        EditText backend=findViewById(R.id.backendUrl); EditText child=findViewById(R.id.childId); TextView status=findViewById(R.id.status); Button on=findViewById(R.id.btnOn); Button off=findViewById(R.id.btnOff);
-        backend.setText(getPreferences(MODE_PRIVATE).getString("backend","https://bedtime-parental-api.itjundobal.workers.dev")); child.setText(getPreferences(MODE_PRIVATE).getString("child","child-001"));
-        LinearLayout root=(LinearLayout)status.getParent();
-        TextView pairCode=new TextView(this); pairCode.setGravity(Gravity.CENTER); pairCode.setTextSize(28); pairCode.setText("No pairing code yet");
-        Button generate=new Button(this); generate.setText("GENERATE 6-DIGIT CHILD PAIRING CODE");
-        TextView pairStatus=new TextView(this); pairStatus.setText("Generate a code, then enter it on the Child phone. Code expires in 15 minutes.");
-        root.addView(pairCode,0); root.addView(generate,1); root.addView(pairStatus,2);
-        generate.setOnClickListener(v->generatePairing(backend,child,pairCode,pairStatus));
-        on.setOnClickListener(v->setBedtime(true,backend,child,status)); off.setOnClickListener(v->setBedtime(false,backend,child,status));
-    }
-    private void generatePairing(EditText backend, EditText child, TextView codeView, TextView status){
-        String base=backend.getText().toString().trim().replaceAll("/$",""); if(base.isEmpty()){status.setText("Backend URL is empty");return;}
-        status.setText("Generating secure pairing code…");
-        new Thread(()->{try{
-            URL u=new URL(base+"/api/pairing/create"); HttpURLConnection x=(HttpURLConnection)u.openConnection(); x.setRequestMethod("POST"); x.setConnectTimeout(5000); x.setReadTimeout(5000); x.setRequestProperty("Content-Type","application/json"); x.setDoOutput(true);
-            try(OutputStream os=x.getOutputStream()){os.write("{}".getBytes(StandardCharsets.UTF_8));}
-            int response=x.getResponseCode(); String body=readBody(x,response); if(response<200||response>=300)throw new Exception(body);
-            JSONObject d=new JSONObject(body); String token=d.getString("parentToken"); String childId=d.getString("childId"); String code=d.getString("code");
-            getPreferences(MODE_PRIVATE).edit().putString("backend",base).putString("child",childId).putString("parent_token",token).apply();
-            runOnUiThread(()->{child.setText(childId);codeView.setText(code);status.setText("Enter this 6-digit code on the Child phone. Expires in 15 minutes.");}); x.disconnect();
-        }catch(Exception e){runOnUiThread(()->status.setText("Pairing failed: "+e.getMessage()));}}).start();
-    }
-    private String readBody(HttpURLConnection x,int code)throws Exception{try(BufferedReader br=new BufferedReader(new InputStreamReader(code>=400?x.getErrorStream():x.getInputStream()))){StringBuilder s=new StringBuilder();String line;while((line=br.readLine())!=null)s.append(line);return s.toString();}}
-    private void setBedtime(boolean enabled,EditText backendUrl,EditText childId,TextView status){String base=backendUrl.getText().toString().trim().replaceAll("/$","");String id=childId.getText().toString().trim();if(base.isEmpty()||id.isEmpty())return;getPreferences(MODE_PRIVATE).edit().putString("backend",base).putString("child",id).apply();status.setText(enabled?"Sending Bedtime ON…":"Sending Bedtime OFF…");new Thread(()->{try{URL u=new URL(base+"/api/children/"+id+"/bedtime");HttpURLConnection x=(HttpURLConnection)u.openConnection();x.setRequestMethod("POST");x.setConnectTimeout(5000);x.setReadTimeout(5000);x.setRequestProperty("Content-Type","application/json");String token=getPreferences(MODE_PRIVATE).getString("parent_token","");if(!token.isEmpty())x.setRequestProperty("X-Parent-Token",token);String key=getPreferences(MODE_PRIVATE).getString("parent_key","");if(!key.isEmpty())x.setRequestProperty("X-Parent-Key",key);x.setDoOutput(true);try(OutputStream os=x.getOutputStream()){os.write(("{\"active\":"+enabled+"}").getBytes(StandardCharsets.UTF_8));}int code=x.getResponseCode();runOnUiThread(()->status.setText(code>=200&&code<300?"Bedtime: "+(enabled?"ON":"OFF"):"Server error: "+code));x.disconnect();}catch(Exception e){runOnUiThread(()->{status.setText("Connection failed");Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();});}}).start();}
+import android.app.Activity;import android.os.Bundle;import android.view.Gravity;import android.widget.*;import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;import org.json.JSONObject;
+public class MainActivity extends Activity{
+ private static final String MODE="selected_role";private EditText backend,child;private TextView status,codeView,childrenView;private String parentToken="";
+ @Override protected void onCreate(Bundle b){super.onCreate(b);String r=getPreferences(0).getString(MODE,"");if("parent".equals(r))showParent();else if("child".equals(r))launchChild();else chooser();}
+ private void chooser(){LinearLayout x=box();TextView t=new TextView(this);t.setText("BEDTIME PARENTAL\n\nWho are you?");t.setTextSize(26);t.setGravity(Gravity.CENTER);x.addView(t);Button p=new Button(this);p.setText("👨 PARENT");x.addView(p);Button c=new Button(this);c.setText("👶 CHILD");x.addView(c);p.setOnClickListener(v->{getPreferences(0).edit().putString(MODE,"parent").apply();showParent();});c.setOnClickListener(v->{getPreferences(0).edit().putString(MODE,"child").apply();launchChild();});setContentView(x);}
+ private void launchChild(){try{startActivity(new android.content.Intent(this,com.master.bedtime.child.MainActivity.class));}catch(Exception e){chooser();}}
+ private LinearLayout box(){LinearLayout x=new LinearLayout(this);x.setOrientation(LinearLayout.VERTICAL);x.setPadding(30,40,30,30);x.setGravity(Gravity.CENTER_HORIZONTAL);return x;}
+ private void showParent(){LinearLayout root=box();TextView title=new TextView(this);title.setText("PARENT CONTROL");title.setTextSize(28);title.setGravity(Gravity.CENTER);root.addView(title);backend=new EditText(this);backend.setHint("Backend URL");backend.setText(getPreferences(0).getString("backend","https://bedtime-parental-api.itjundobal.workers.dev"));root.addView(backend);childrenView=new TextView(this);childrenView.setText("Children: none yet");root.addView(childrenView);codeView=new TextView(this);codeView.setText("No new pairing code");codeView.setTextSize(28);codeView.setGravity(Gravity.CENTER);root.addView(codeView);Button add=new Button(this);add.setText("ADD CHILD — GENERATE NEW 6-DIGIT CODE");root.addView(add);child=new EditText(this);child.setHint("Selected Child ID");root.addView(child);Button on=new Button(this);on.setText("BEDTIME ON");root.addView(on);Button off=new Button(this);off.setText("BEDTIME OFF");root.addView(off);status=new TextView(this);status.setText("Ready");root.addView(status);setContentView(root);add.setOnClickListener(v->addChild());on.setOnClickListener(v->setBedtime(true));off.setOnClickListener(v->setBedtime(false));}
+ private void addChild(){String base=backend.getText().toString().trim().replaceAll("/$","");status.setText("Generating new Child code…");new Thread(()->{try{HttpURLConnection x=(HttpURLConnection)new URL(base+"/api/pairing/create").openConnection();x.setRequestMethod("POST");x.setConnectTimeout(7000);x.setReadTimeout(7000);x.setRequestProperty("Content-Type","application/json");if(!parentToken.isEmpty())x.setRequestProperty("X-Parent-Token",parentToken);x.setDoOutput(true);try(OutputStream o=x.getOutputStream()){o.write("{}".getBytes(StandardCharsets.UTF_8));}int r=x.getResponseCode();String body=read(x,r);if(r<200||r>=300)throw new Exception(body);JSONObject d=new JSONObject(body);parentToken=d.getString("parentToken");String id=d.getString("childId"),code=d.getString("code");getPreferences(0).edit().putString("backend",base).putString("parent_token",parentToken).putString("child",id).apply();runOnUiThread(()->{child.setText(id);codeView.setText("NEW CODE: "+code);status.setText("Give this code to Child. Expires in 15 minutes.");});poll();}catch(Exception e){runOnUiThread(()->status.setText("Pairing failed: "+e.getMessage()));}}).start();}
+ private void poll(){new Thread(()->{try{HttpURLConnection x=(HttpURLConnection)new URL(backend.getText().toString().trim().replaceAll("/$","")+"/api/pairing/status").openConnection();x.setRequestProperty("X-Parent-Token",parentToken);String b=read(x,x.getResponseCode());JSONObject d=new JSONObject(b);runOnUiThread(()->childrenView.setText("Children linked: "+d.optJSONArray("children")));}catch(Exception ignored){}}).start();}
+ private void setBedtime(boolean a){String base=backend.getText().toString().trim().replaceAll("/$","");String id=child.getText().toString().trim();status.setText(a?"Sending Bedtime ON…":"Sending Bedtime OFF…");new Thread(()->{try{HttpURLConnection x=(HttpURLConnection)new URL(base+"/api/children/"+id+"/bedtime").openConnection();x.setRequestMethod("POST");x.setRequestProperty("Content-Type","application/json");x.setRequestProperty("X-Parent-Token",parentToken);x.setDoOutput(true);try(OutputStream o=x.getOutputStream()){o.write(("{\"active\":"+a+"}").getBytes(StandardCharsets.UTF_8));}int r=x.getResponseCode();runOnUiThread(()->status.setText(r>=200&&r<300?(a?"Bedtime ON ✓":"Bedtime OFF ✓"):"Server error "+r));}catch(Exception e){runOnUiThread(()->status.setText("Connection failed"));}}).start();}
+ private String read(HttpURLConnection x,int c)throws Exception{BufferedReader b=new BufferedReader(new InputStreamReader(c>=400?x.getErrorStream():x.getInputStream()));StringBuilder s=new StringBuilder();String l;while((l=b.readLine())!=null)s.append(l);b.close();return s.toString();}
 }
