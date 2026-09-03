@@ -10,11 +10,11 @@ android {
     val signingKeyPassword = System.getenv("BEDTIME_KEY_PASSWORD")
 
     defaultConfig {
-        applicationId = "com.master.bedtime.child"
+        applicationId = "com.master.bedtime.parent"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2000 + buildNumber
-        versionName = "1.0.$buildNumber-universal"
+        versionCode = 3000 + buildNumber
+        versionName = "1.0.$buildNumber-parent"
     }
 
     signingConfigs {
@@ -37,5 +37,4 @@ android {
 }
 
 dependencies {
-    implementation(project(":childapp"))
 }
