@@ -6,9 +6,7 @@ on:
     branches: [ main ]
     paths:
       - 'android/parentapp/**'
-      - 'android/childapp/src/main/java/com/master/bedtime/child/**'
-      - 'android/childapp/src/main/res/layout/**'
-      - 'android/childapp/src/main/res/xml/**'
+      - 'android/childapp/**'
       - 'android/settings.gradle.kts'
       - '.github/workflows/build-parent-apk.yml'
 
