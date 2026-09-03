@@ -163,11 +163,13 @@ public class MainActivity extends Activity {
     }
 
     private void showSetupUi(boolean accountsConfirmed, boolean owner, boolean batteryConfirmed) {
+        // IMPORTANT: every setup control stays visible and clickable until SAVE & RESTART succeeds.
+        // Only the pairing section is hidden during setup.
         accounts.setVisibility(View.VISIBLE);
         continueSetup.setVisibility(View.VISIBLE);
         backend.setVisibility(View.VISIBLE);
         child.setVisibility(View.VISIBLE);
-        permission.setVisibility(owner ? View.GONE : View.VISIBLE);
+        permission.setVisibility(View.VISIBLE);
         generatePairing.setVisibility(View.GONE);
         pairingInput.setVisibility(View.GONE);
         pairingCode.setVisibility(View.GONE);
@@ -176,14 +178,22 @@ public class MainActivity extends Activity {
         restoreAccounts.setVisibility(View.GONE);
         test.setVisibility(View.VISIBLE);
         releaseDeviceOwner.setVisibility(owner ? View.VISIBLE : View.GONE);
-        batterySettings.setEnabled(accountsConfirmed && owner);
+
+        // Do not hide/disable setup actions based on the current step.
+        // Their click handlers explain what prerequisite is still missing.
+        accounts.setEnabled(true);
+        continueSetup.setEnabled(true);
+        permission.setEnabled(true);
+        batterySettings.setEnabled(true);
+        test.setEnabled(true);
+        start.setEnabled(true);
+
         batterySettings.setText(batteryConfirmed ? "BATTERY / BACKGROUND SETTINGS ✓" : "BATTERY / BACKGROUND SETTINGS — OPEN SETTINGS");
-        start.setEnabled(accountsConfirmed && owner && batteryConfirmed);
-        test.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
         start.setText("SAVE & RESTART");
     }
 
     private void showCompletedChildUi(boolean owner, boolean paired) {
+        // Pairing is revealed ONLY after setup_complete=true.
         accounts.setVisibility(View.GONE);
         continueSetup.setVisibility(View.GONE);
         backend.setVisibility(View.GONE);
@@ -291,6 +301,7 @@ public class MainActivity extends Activity {
     private void testBedtime() {
         if (isDeviceOwner()) { getSharedPreferences(CFG, MODE_PRIVATE).edit().putBoolean("last_active", true).apply(); startActivity(new Intent(this, BedtimeLockActivity.class)); }
         else if (Settings.canDrawOverlays(this)) BedtimeOverlay.show(this);
+        else Toast.makeText(this, "Device Owner is not active yet. Complete setup first.", Toast.LENGTH_LONG).show();
     }
 
     private void confirmReleaseDeviceOwner() {
