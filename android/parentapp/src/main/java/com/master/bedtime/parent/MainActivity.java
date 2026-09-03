@@ -23,41 +23,99 @@ import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
     private static final String BACKEND = "https://bedtime-parental-api.itjundobal.workers.dev";
+    private static final String MODE = "selected_role";
+    private static final String PARENT = "parent";
+    private static final String CHILD = "child";
     private static final long POLL_MS = 2000L;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView codeView;
     private TextView statusView;
     private TextView childrenView;
-    private Button addChildButton;
+    private Button generateButton;
+    private Button addButton;
     private Button bedtimeOnButton;
     private Button bedtimeOffButton;
 
     private String parentToken = "";
     private String selectedChildId = "";
+    private boolean waitingForPair = false;
     private boolean hasPairedChild = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        parentToken = getPreferences(MODE_PRIVATE).getString("parent_token", "");
-        selectedChildId = getPreferences(MODE_PRIVATE).getString("selected_child", "");
-        buildUi();
+        String role = getPreferences(MODE_PRIVATE).getString(MODE, "");
 
-        if (parentToken.isEmpty()) {
-            statusView.setText("Creating your first 6-digit pairing code…");
-            createPairingCode(false);
+        if (PARENT.equals(role)) {
+            parentToken = getPreferences(MODE_PRIVATE).getString("parent_token", "");
+            selectedChildId = getPreferences(MODE_PRIVATE).getString("selected_child", "");
+            showParent();
+            if (parentToken.isEmpty()) {
+                generatePairingCode(false);
+            } else {
+                statusView.setText("Checking linked Child devices…");
+                pollPairingStatus();
+            }
+        } else if (CHILD.equals(role)) {
+            launchChild();
         } else {
-            statusView.setText("Checking linked Child devices…");
-            pollPairingStatus();
+            chooser();
         }
     }
 
-    private void buildUi() {
+    private void chooser() {
+        LinearLayout root = box();
+        TextView title = new TextView(this);
+        title.setText("BEDTIME PARENTAL\n\nChoose your role");
+        title.setTextSize(26);
+        title.setGravity(Gravity.CENTER);
+        root.addView(title);
+
+        Button parent = new Button(this);
+        parent.setText("PARENT");
+        root.addView(parent);
+
+        Button child = new Button(this);
+        child.setText("CHILD");
+        root.addView(child);
+
+        parent.setOnClickListener(v -> {
+            getPreferences(MODE_PRIVATE).edit().putString(MODE, PARENT).apply();
+            parentToken = getPreferences(MODE_PRIVATE).getString("parent_token", "");
+            showParent();
+            if (parentToken.isEmpty()) generatePairingCode(false);
+            else pollPairingStatus();
+        });
+
+        child.setOnClickListener(v -> {
+            getPreferences(MODE_PRIVATE).edit().putString(MODE, CHILD).apply();
+            launchChild();
+        });
+
+        setContentView(root);
+    }
+
+    private void launchChild() {
+        try {
+            startActivity(new android.content.Intent(
+                    this, com.master.bedtime.child.MainActivity.class));
+        } catch (Exception e) {
+            getPreferences(MODE_PRIVATE).edit().remove(MODE).apply();
+            chooser();
+        }
+    }
+
+    private LinearLayout box() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(36, 48, 36, 36);
+        root.setPadding(30, 40, 30, 30);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
+        return root;
+    }
+
+    private void showParent() {
+        LinearLayout root = box();
 
         TextView title = new TextView(this);
         title.setText("BEDTIME PARENT");
@@ -66,32 +124,39 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView instruction = new TextView(this);
-        instruction.setText("Give this 6-digit code to the Child device.");
-        instruction.setTextSize(18);
-        instruction.setPadding(0, 28, 0, 12);
+        instruction.setText("Give the 6-digit code to the Child device.");
+        instruction.setTextSize(17);
         instruction.setGravity(Gravity.CENTER);
+        instruction.setPadding(0, 20, 0, 10);
         root.addView(instruction);
 
         codeView = new TextView(this);
         codeView.setText("------");
-        codeView.setTextSize(38);
+        codeView.setTextSize(40);
         codeView.setGravity(Gravity.CENTER);
+        codeView.setPadding(0, 10, 0, 12);
         root.addView(codeView);
 
         statusView = new TextView(this);
-        statusView.setPadding(0, 18, 0, 18);
+        statusView.setText("Starting…");
         statusView.setGravity(Gravity.CENTER);
+        statusView.setPadding(0, 8, 0, 16);
         root.addView(statusView);
 
         childrenView = new TextView(this);
-        childrenView.setText("Linked Children: none yet");
-        childrenView.setPadding(0, 8, 0, 20);
+        childrenView.setText("Children: none yet");
+        childrenView.setGravity(Gravity.CENTER);
+        childrenView.setPadding(0, 4, 0, 18);
         root.addView(childrenView);
 
-        addChildButton = new Button(this);
-        addChildButton.setText("ADD CHILD — GENERATE NEW 6-DIGIT CODE");
-        addChildButton.setVisibility(View.GONE);
-        root.addView(addChildButton);
+        generateButton = new Button(this);
+        generateButton.setText("GENERATE CODE");
+        root.addView(generateButton);
+
+        addButton = new Button(this);
+        addButton.setText("ADD");
+        addButton.setVisibility(View.GONE);
+        root.addView(addButton);
 
         bedtimeOnButton = new Button(this);
         bedtimeOnButton.setText("BEDTIME ON");
@@ -103,24 +168,47 @@ public class MainActivity extends Activity {
         bedtimeOffButton.setVisibility(View.GONE);
         root.addView(bedtimeOffButton);
 
-        addChildButton.setOnClickListener(v -> createPairingCode(true));
+        generateButton.setOnClickListener(v -> generatePairingCode(!parentToken.isEmpty()));
+        addButton.setOnClickListener(v -> generatePairingCode(true));
         bedtimeOnButton.setOnClickListener(v -> setBedtime(true));
         bedtimeOffButton.setOnClickListener(v -> setBedtime(false));
 
         setContentView(root);
+        updateParentControls();
     }
 
-    private void createPairingCode(boolean addingAnotherChild) {
-        addChildButton.setEnabled(false);
+    private void updateParentControls() {
+        if (generateButton == null) return;
+
+        generateButton.setVisibility(waitingForPair ? View.VISIBLE : View.GONE);
+        generateButton.setEnabled(!waitingForPair);
+        addButton.setVisibility(hasPairedChild ? View.VISIBLE : View.GONE);
+        bedtimeOnButton.setVisibility(hasPairedChild ? View.VISIBLE : View.GONE);
+        bedtimeOffButton.setVisibility(hasPairedChild ? View.VISIBLE : View.GONE);
+    }
+
+    private void generatePairingCode(boolean addingAnotherChild) {
+        if (addingAnotherChild && parentToken.isEmpty()) {
+            addingAnotherChild = false;
+        }
+
+        waitingForPair = true;
+        hasPairedChild = false;
+        selectedChildId = "";
+        updateParentControls();
+        codeView.setText("------");
         statusView.setText(addingAnotherChild
                 ? "Generating a new 6-digit code…"
-                : "Creating your first 6-digit pairing code…");
+                : "Generating your first 6-digit code…");
 
+        final boolean addMode = addingAnotherChild;
         new Thread(() -> {
             try {
                 HttpURLConnection c = open(BACKEND + "/api/pairing/create", "POST");
                 c.setRequestProperty("Content-Type", "application/json");
-                if (!parentToken.isEmpty()) c.setRequestProperty("X-Parent-Token", parentToken);
+                if (!parentToken.isEmpty()) {
+                    c.setRequestProperty("X-Parent-Token", parentToken);
+                }
                 c.setDoOutput(true);
                 try (OutputStream os = c.getOutputStream()) {
                     os.write("{}".getBytes(StandardCharsets.UTF_8));
@@ -132,25 +220,30 @@ public class MainActivity extends Activity {
 
                 JSONObject data = new JSONObject(body);
                 parentToken = data.getString("parentToken");
-                selectedChildId = data.getString("childId");
+                String newChildId = data.getString("childId");
                 String code = data.getString("code");
 
                 getPreferences(MODE_PRIVATE).edit()
+                        .putString(MODE, PARENT)
                         .putString("parent_token", parentToken)
-                        .putString("selected_child", selectedChildId)
+                        .putString("pending_child", newChildId)
                         .apply();
 
                 runOnUiThread(() -> {
                     codeView.setText(code);
-                    statusView.setText("Waiting for Child to enter this code…");
-                    addChildButton.setEnabled(true);
+                    statusView.setText(addMode
+                            ? "Give this new 6-digit code to the next Child."
+                            : "Give this 6-digit code to the Child.");
+                    updateParentControls();
                 });
+
                 pollPairingStatus();
             } catch (Exception e) {
                 runOnUiThread(() -> {
+                    waitingForPair = false;
                     codeView.setText("------");
                     statusView.setText("Pairing setup failed: " + safeMessage(e));
-                    addChildButton.setEnabled(true);
+                    updateParentControls();
                 });
             }
         }).start();
@@ -158,6 +251,7 @@ public class MainActivity extends Activity {
 
     private void pollPairingStatus() {
         if (parentToken.isEmpty()) return;
+
         new Thread(() -> {
             try {
                 HttpURLConnection c = open(BACKEND + "/api/pairing/status", "GET");
@@ -169,8 +263,8 @@ public class MainActivity extends Activity {
                 JSONObject data = new JSONObject(body);
                 JSONArray children = data.optJSONArray("children");
                 boolean paired = false;
-                StringBuilder text = new StringBuilder("Linked Children:");
-                String firstPaired = "";
+                String latestPairedId = "";
+                StringBuilder text = new StringBuilder("Children linked:");
 
                 if (children == null || children.length() == 0) {
                     text.append(" none yet");
@@ -180,40 +274,42 @@ public class MainActivity extends Activity {
                         if (child == null) continue;
                         String id = child.optString("childId", "");
                         boolean isPaired = child.optBoolean("paired", false);
-                        text.append("\n").append(i + 1).append(". ").append(id)
-                                .append(isPaired ? " — PAIRED ✓" : " — waiting");
+                        text.append("\n").append(i + 1).append(". ")
+                                .append(isPaired ? "PAIRED ✓" : "WAITING");
                         if (isPaired) {
                             paired = true;
-                            if (firstPaired.isEmpty()) firstPaired = id;
+                            latestPairedId = id;
                         }
                     }
                 }
 
                 final boolean finalPaired = paired;
-                final String finalFirstPaired = firstPaired;
+                final String finalLatestId = latestPairedId;
                 final String finalText = text.toString();
+
                 runOnUiThread(() -> {
                     childrenView.setText(finalText);
                     hasPairedChild = finalPaired;
+
                     if (finalPaired) {
-                        if (!finalFirstPaired.isEmpty()) {
-                            selectedChildId = finalFirstPaired;
+                        waitingForPair = false;
+                        if (!finalLatestId.isEmpty()) {
+                            selectedChildId = finalLatestId;
                             getPreferences(MODE_PRIVATE).edit()
-                                    .putString("selected_child", selectedChildId).apply();
+                                    .putString("selected_child", selectedChildId)
+                                    .remove("pending_child")
+                                    .apply();
                         }
-                        statusView.setText("PAIRING SUCCESSFUL ✓");
                         codeView.setText("PAIRED ✓");
-                        addChildButton.setVisibility(View.VISIBLE);
-                        bedtimeOnButton.setVisibility(View.VISIBLE);
-                        bedtimeOffButton.setVisibility(View.VISIBLE);
+                        statusView.setText("PAIRING SUCCESSFUL ✓");
                     } else {
-                        addChildButton.setVisibility(View.GONE);
-                        bedtimeOnButton.setVisibility(View.GONE);
-                        bedtimeOffButton.setVisibility(View.GONE);
+                        waitingForPair = true;
                     }
+                    updateParentControls();
                 });
             } catch (Exception e) {
-                runOnUiThread(() -> statusView.setText("Pairing status failed: " + safeMessage(e)));
+                runOnUiThread(() -> statusView.setText(
+                        "Pairing status failed: " + safeMessage(e)));
             } finally {
                 handler.postDelayed(this::pollPairingStatus, POLL_MS);
             }
@@ -225,15 +321,20 @@ public class MainActivity extends Activity {
             statusView.setText("Pair a Child first.");
             return;
         }
+
         statusView.setText(enabled ? "Sending BEDTIME ON…" : "Sending BEDTIME OFF…");
+        final String childId = selectedChildId;
+
         new Thread(() -> {
             try {
-                HttpURLConnection c = open(BACKEND + "/api/children/" + selectedChildId + "/bedtime", "POST");
+                HttpURLConnection c = open(
+                        BACKEND + "/api/children/" + childId + "/bedtime", "POST");
                 c.setRequestProperty("Content-Type", "application/json");
                 c.setRequestProperty("X-Parent-Token", parentToken);
                 c.setDoOutput(true);
                 try (OutputStream os = c.getOutputStream()) {
-                    os.write(("{\"active\":" + enabled + "}").getBytes(StandardCharsets.UTF_8));
+                    os.write(("{\"active\":" + enabled + "}")
+                            .getBytes(StandardCharsets.UTF_8));
                 }
                 int http = c.getResponseCode();
                 String body = readBody(c, http);
@@ -242,7 +343,8 @@ public class MainActivity extends Activity {
                                 ? (enabled ? "BEDTIME ON ✓" : "BEDTIME OFF ✓")
                                 : "Server error: " + body));
             } catch (Exception e) {
-                runOnUiThread(() -> statusView.setText("Connection failed: " + safeMessage(e)));
+                runOnUiThread(() -> statusView.setText(
+                        "Connection failed: " + safeMessage(e)));
             }
         }).start();
     }
@@ -268,7 +370,8 @@ public class MainActivity extends Activity {
 
     private String safeMessage(Exception e) {
         String m = e.getMessage();
-        return (m == null || m.trim().isEmpty()) ? e.getClass().getSimpleName() : m;
+        return (m == null || m.trim().isEmpty())
+                ? e.getClass().getSimpleName() : m;
     }
 
     @Override
