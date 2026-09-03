@@ -1,24 +1,190 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent">
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="24dp" android:gravity="center_horizontal">
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Child Bedtime Setup" android:textSize="26sp" android:textStyle="bold" />
-        <TextView android:id="@+id/setupStep" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="STEP 1 — Account / Security" android:textStyle="bold" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Setup muna. Pairing is NOT part of setup. Pairing appears only after CHILD ACTIVE." />
-        <Button android:id="@+id/btnAccountsSecurity" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="1. ACCOUNT / SECURITY — REMOVE SAVED ACCOUNTS" />
-        <Button android:id="@+id/btnContinueSetup" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="TAPOS NA — CONTINUE SETUP" />
-        <TextView android:id="@+id/deviceOwnerStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Device Owner: checking..." android:textStyle="bold" />
-        <TextView android:id="@+id/deviceOwnerHelp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" />
-        <EditText android:id="@+id/backendUrl" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:hint="Backend URL" android:inputType="textUri" />
-        <EditText android:id="@+id/childId" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Child ID" />
-        <Button android:id="@+id/btnOverlayPermission" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Fallback only: Allow Display Over Apps" />
-        <Button android:id="@+id/btnGeneratePairingCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="ENTER 6-DIGIT PAIRING CODE" />
-        <EditText android:id="@+id/childPairingInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="6-digit code from PARENT" android:inputType="number" android:maxLength="6" android:visibility="gone" />
-        <TextView android:id="@+id/pairingCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:gravity="center" android:text="Pairing: waiting until CHILD ACTIVE" android:textSize="20sp" android:textStyle="bold" />
-        <Button android:id="@+id/btnStartMonitor" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="SAVE &amp; RESTART" />
-        <Button android:id="@+id/btnBatterySettings" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="2. BATTERY / BACKGROUND SETTINGS" />
-        <Button android:id="@+id/btnRestoreAccounts" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="IBALIK / ADD ULIT ANG MGA ACCOUNT" android:visibility="gone" />
-        <Button android:id="@+id/btnTestOverlay" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="TEST BEDTIME" />
-        <Button android:id="@+id/btnReleaseDeviceOwner" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="TEST ONLY — RELEASE DEVICE OWNER" android:visibility="gone" />
-        <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="24dp" android:text="Setup not finished" />
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:gravity="center_horizontal">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Child Bedtime Setup"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/setupStep"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="SETUP CHECKLIST"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Complete the setup checklist first. Pairing and Recovery Code appear only after SAVE &amp; RESTART succeeds." />
+
+        <Button
+            android:id="@+id/btnAccountsSecurity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="1. ACCOUNT / SECURITY" />
+
+        <Button
+            android:id="@+id/btnContinueSetup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="2. REMOVE SAVED ACCOUNTS — DONE" />
+
+        <Button
+            android:id="@+id/btnDeviceOwner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="3. ACTIVE DEVICE OWNER" />
+
+        <TextView
+            android:id="@+id/deviceOwnerStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Device Owner: checking..."
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/deviceOwnerHelp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" />
+
+        <Button
+            android:id="@+id/btnBatterySettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="4. BATTERY — NO RESTRICTIONS" />
+
+        <Button
+            android:id="@+id/btnAutoRun"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="5. AUTO-RUN / BACKGROUND" />
+
+        <Button
+            android:id="@+id/btnStartMonitor"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="6. START BEDTIME MONITOR" />
+
+        <Button
+            android:id="@+id/btnSaveRestart"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="7. SAVE &amp; RESTART" />
+
+        <EditText
+            android:id="@+id/backendUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:hint="Backend URL"
+            android:inputType="textUri" />
+
+        <EditText
+            android:id="@+id/childId"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Child ID" />
+
+        <Button
+            android:id="@+id/btnOverlayPermission"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Fallback only: Allow Display Over Apps" />
+
+        <Button
+            android:id="@+id/btnGeneratePairingCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="8. PAIRING"
+            android:visibility="gone" />
+
+        <EditText
+            android:id="@+id/childPairingInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="6-digit code from PARENT"
+            android:inputType="number"
+            android:maxLength="6"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/pairingCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:text="PAIRING — waiting until CHILD ACTIVE"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/recoveryCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:text="9. RECOVERY CODE — waiting for pairing"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnRestoreAccounts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="ACCOUNTS / DEVICE SETTINGS"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnTestOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="TEST BEDTIME"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnReleaseDeviceOwner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="10. RELEASE DEVICE OWNER — LAST"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="24dp"
+            android:text="Setup not finished" />
+
     </LinearLayout>
 </ScrollView>
