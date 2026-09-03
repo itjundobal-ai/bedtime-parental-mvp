@@ -2,114 +2,25 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="24dp"
         android:gravity="center_horizontal">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Parent Bedtime Control"
-            android:textSize="28sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/legacyOwnerWarning"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:gravity="center"
-            android:text="OLD CHILD PROTECTION DETECTED — This phone is still Device Owner. Release it before uninstalling or using this phone only as PARENT."
-            android:textStyle="bold"
-            android:visibility="gone" />
-
-        <Button
-            android:id="@+id/btnReleaseOldChildProtection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="RELEASE OLD CHILD PROTECTION"
-            android:visibility="gone" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="ADD / PAIR CHILD"
-            android:textStyle="bold" />
-
-        <EditText
-            android:id="@+id/parentPairCode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="6-digit pairing code from CHILD"
-            android:inputType="number" />
-
-        <Button
-            android:id="@+id/btnPairChild"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="PAIR CHILD" />
-
-        <EditText
-            android:id="@+id/parentChildId"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:hint="Paired Child ID"
-            android:enabled="false" />
-
-        <TextView
-            android:id="@+id/parentRecoveryCode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="Recovery code: not paired yet"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/parentStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:gravity="center"
-            android:text="Pair a child to begin"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/btnBedtimeOn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="28dp"
-            android:text="BEDTIME ON" />
-
-        <Button
-            android:id="@+id/btnBedtimeOff"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="BEDTIME OFF" />
-
-        <Button
-            android:id="@+id/btnRefreshState"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="REFRESH STATUS" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:gravity="center"
-            android:text="After pairing, the Parent app securely stores the child credential and recovery code on this Parent device."
-            android:textSize="14sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Parent Bedtime Control" android:textSize="28sp" android:textStyle="bold" />
+        <TextView android:id="@+id/legacyOwnerWarning" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:gravity="center" android:text="OLD CHILD PROTECTION DETECTED — This phone is still Device Owner. Release it before uninstalling or using this phone only as PARENT." android:textStyle="bold" android:visibility="gone" />
+        <Button android:id="@+id/btnReleaseOldChildProtection" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="RELEASE OLD CHILD PROTECTION" android:visibility="gone" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="ADD / PAIR CHILD" android:textStyle="bold" />
+        <EditText android:id="@+id/parentChildId" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="Child ID (example: child-002)" android:enabled="true" />
+        <Button android:id="@+id/btnPairChild" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="GENERATE 6-DIGIT PAIRING CODE" />
+        <TextView android:id="@+id/parentGeneratedCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center" android:text="PAIRING CODE: not generated" android:textSize="22sp" android:textStyle="bold" />
+        <EditText android:id="@+id/parentPairCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:visibility="gone" />
+        <TextView android:id="@+id/parentRecoveryCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Recovery code: not generated" android:textStyle="bold" />
+        <TextView android:id="@+id/parentStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:gravity="center" android:text="Generate a pairing code to begin" android:textSize="18sp" android:textStyle="bold" />
+        <Button android:id="@+id/btnBedtimeOn" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:text="BEDTIME ON" />
+        <Button android:id="@+id/btnBedtimeOff" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="BEDTIME OFF" />
+        <Button android:id="@+id/btnRefreshState" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="REFRESH STATUS" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:gravity="center" android:text="Parent generates the code. Child enters the 6-digit code after CHILD ACTIVE. The Parent token is stored securely on this Parent device." android:textSize="14sp" />
     </LinearLayout>
 </ScrollView>
