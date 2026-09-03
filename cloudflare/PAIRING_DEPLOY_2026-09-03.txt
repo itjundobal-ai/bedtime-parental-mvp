@@ -1,0 +1,2 @@
+Force Cloudflare Worker redeploy after Parent/Child pairing verification on 2026-09-03.
+Expected endpoints: /api/pairing/create, /api/pairing/redeem, /api/pairing/status.
