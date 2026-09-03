@@ -186,6 +186,17 @@ export default {
       return json({ ok: true, childId: pending.childId, childToken, recoveryPin: pending.recoveryPin });
     }
 
+    if (url.pathname === '/api/pairing/status' && request.method === 'GET') {
+      const childId = String(url.searchParams.get('childId') || '').trim();
+      if (!/^[A-Za-z0-9._-]{1,80}$/.test(childId)) return json({ error: 'invalid childId' }, 400);
+      const token = request.headers.get('x-parent-token') || '';
+      if (!token) return json({ error: 'missing parent token' }, 401);
+      const credentials = await getCredentials(env, childId);
+      if (!credentials) return json({ childId, paired: false });
+      if (!(await tokenMatches(token, credentials.parentTokenHash))) return json({ error: 'unauthorized' }, 401);
+      return json({ childId, paired: credentials.paired === true, pairedAt: credentials.pairedAt || null });
+    }
+
     const match = url.pathname.match(/^\/api\/children\/([^/]+)\/bedtime$/);
     if (!match) return json({ error: 'not found' }, 404);
     const childId = decodeURIComponent(match[1]);
