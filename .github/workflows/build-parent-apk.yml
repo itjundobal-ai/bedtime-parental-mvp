@@ -1,4 +1,4 @@
-name: Build Universal Parent Child APK
+name: Build Standalone Parent APK
 
 on:
   workflow_dispatch:
@@ -6,7 +6,6 @@ on:
     branches: [ main ]
     paths:
       - 'android/parentapp/**'
-      - 'android/childapp/**'
       - 'android/settings.gradle.kts'
       - '.github/workflows/build-parent-apk.yml'
 
@@ -53,7 +52,7 @@ jobs:
           BEDTIME_KEYSTORE_B64: ${{ secrets.BEDTIME_KEYSTORE_B64 }}
         run: echo "$BEDTIME_KEYSTORE_B64" | base64 --decode > bedtime-release.jks
 
-      - name: Build signed universal Parent + Child APK
+      - name: Build signed standalone Parent APK
         env:
           BUILD_NUMBER: ${{ github.run_number }}
           BEDTIME_KEYSTORE_PASSWORD: ${{ secrets.BEDTIME_KEYSTORE_PASSWORD }}
@@ -61,11 +60,11 @@ jobs:
           BEDTIME_KEY_PASSWORD: ${{ secrets.BEDTIME_KEY_PASSWORD }}
         run: gradle :parentapp:assembleRelease --stacktrace
 
-      - name: Verify signed universal APK exists
+      - name: Verify Parent APK exists
         run: test -s parentapp/build/outputs/apk/release/parentapp-release.apk
 
-      - name: Upload signed universal APK
+      - name: Upload signed Parent APK
         uses: actions/upload-artifact@v4
         with:
-          name: bedtime-parent-new-apk
+          name: bedtime-parent-standalone-apk
           path: android/parentapp/build/outputs/apk/release/parentapp-release.apk
