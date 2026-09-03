@@ -1,4 +1,4 @@
-name: Build Child APK
+name: Build Universal Parent + Child APK
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -35,33 +35,14 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
-      - name: Validate signing secrets
-        env:
-          BEDTIME_KEYSTORE_B64: ${{ secrets.BEDTIME_KEYSTORE_B64 }}
-          BEDTIME_KEYSTORE_PASSWORD: ${{ secrets.BEDTIME_KEYSTORE_PASSWORD }}
-          BEDTIME_KEY_ALIAS: ${{ secrets.BEDTIME_KEY_ALIAS }}
-          BEDTIME_KEY_PASSWORD: ${{ secrets.BEDTIME_KEY_PASSWORD }}
-        run: |
-          test -n "$BEDTIME_KEYSTORE_B64" || (echo "Missing BEDTIME_KEYSTORE_B64" && exit 1)
-          test -n "$BEDTIME_KEYSTORE_PASSWORD" || (echo "Missing BEDTIME_KEYSTORE_PASSWORD" && exit 1)
-          test -n "$BEDTIME_KEY_ALIAS" || (echo "Missing BEDTIME_KEY_ALIAS" && exit 1)
-          test -n "$BEDTIME_KEY_PASSWORD" || (echo "Missing BEDTIME_KEY_PASSWORD" && exit 1)
+      - name: Build Universal Parent + Child APK
+        run: gradle :parentapp:assembleDebug --stacktrace
 
-      - name: Restore permanent signing keystore
-        env:
-          BEDTIME_KEYSTORE_B64: ${{ secrets.BEDTIME_KEYSTORE_B64 }}
-        run: echo "$BEDTIME_KEYSTORE_B64" | base64 --decode > bedtime-release.jks
+      - name: Verify Universal APK exists
+        run: test -f parentapp/build/outputs/apk/debug/parentapp-debug.apk
 
-      - name: Build signed Child APK
-        env:
-          BUILD_NUMBER: ${{ github.run_number }}
-          BEDTIME_KEYSTORE_PASSWORD: ${{ secrets.BEDTIME_KEYSTORE_PASSWORD }}
-          BEDTIME_KEY_ALIAS: ${{ secrets.BEDTIME_KEY_ALIAS }}
-          BEDTIME_KEY_PASSWORD: ${{ secrets.BEDTIME_KEY_PASSWORD }}
-        run: gradle :childapp:assembleRelease --stacktrace
-
-      - name: Upload signed Child APK
+      - name: Upload Universal Parent + Child APK
         uses: actions/upload-artifact@v4
         with:
-          name: bedtime-child-apk
-          path: android/childapp/build/outputs/apk/release/childapp-release.apk
+          name: bedtime-universal-apk
+          path: android/parentapp/build/outputs/apk/debug/parentapp-debug.apk
