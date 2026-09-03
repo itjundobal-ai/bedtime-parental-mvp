@@ -22,6 +22,8 @@ public class MainActivity extends Activity {
     private TextView setupStep;
     private TextView deviceOwnerStatus;
     private TextView deviceOwnerHelp;
+    private Button accounts;
+    private Button continueSetup;
     private Button permission;
     private Button start;
     private Button test;
@@ -32,7 +34,6 @@ public class MainActivity extends Activity {
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
         BedtimeStorage.mirror(this);
 
         backend = findViewById(R.id.backendUrl);
@@ -41,8 +42,8 @@ public class MainActivity extends Activity {
         setupStep = findViewById(R.id.setupStep);
         deviceOwnerStatus = findViewById(R.id.deviceOwnerStatus);
         deviceOwnerHelp = findViewById(R.id.deviceOwnerHelp);
-        Button accounts = findViewById(R.id.btnAccountsSecurity);
-        Button continueSetup = findViewById(R.id.btnContinueSetup);
+        accounts = findViewById(R.id.btnAccountsSecurity);
+        continueSetup = findViewById(R.id.btnContinueSetup);
         permission = findViewById(R.id.btnOverlayPermission);
         start = findViewById(R.id.btnStartMonitor);
         restoreAccounts = findViewById(R.id.btnRestoreAccounts);
@@ -65,12 +66,10 @@ public class MainActivity extends Activity {
             BedtimeStorage.mirror(this);
             refreshSetupState();
         });
-
         permission.setOnClickListener(v -> {
             Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
             startActivity(i);
         });
-
         start.setOnClickListener(v -> startMonitor());
         restoreAccounts.setOnClickListener(v -> showRestoreAccountsReminder());
         test.setOnClickListener(v -> testBedtime());
@@ -96,17 +95,13 @@ public class MainActivity extends Activity {
         String raw = value.trim();
         while (raw.endsWith("/")) raw = raw.substring(0, raw.length() - 1);
         if (raw.isEmpty()) return "";
-
         boolean hadHttps = raw.toLowerCase().contains("https://");
         boolean hadHttp = raw.toLowerCase().contains("http://");
         while (raw.toLowerCase().startsWith("http://") || raw.toLowerCase().startsWith("https://")) {
             if (raw.toLowerCase().startsWith("https://")) raw = raw.substring(8);
             else raw = raw.substring(7);
         }
-
-        if (raw.toLowerCase().endsWith(".workers.dev") || raw.toLowerCase().contains(".workers.dev/")) {
-            return "https://" + raw;
-        }
+        if (raw.toLowerCase().endsWith(".workers.dev") || raw.toLowerCase().contains(".workers.dev/")) return "https://" + raw;
         if (hadHttps) return "https://" + raw;
         if (hadHttp) return "http://" + raw;
         return "https://" + raw;
@@ -132,15 +127,35 @@ public class MainActivity extends Activity {
         } else {
             setupStep.setText("STEP 5 OF 5 — Setup complete");
             deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
-            deviceOwnerHelp.setText("Setup complete. Maaari mong palitan ang Backend URL o Child ID at pindutin ang SAVE / RESTART BEDTIME MONITOR.");
+            deviceOwnerHelp.setText("Setup complete. Configuration and test controls are locked/hidden.");
         }
 
-        permission.setVisibility(owner ? View.GONE : View.VISIBLE);
         start.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
         start.setText(setupComplete ? "SAVE / RESTART BEDTIME MONITOR" : "3. START BEDTIME MONITOR");
-        restoreAccounts.setVisibility(setupComplete ? View.VISIBLE : View.GONE);
         test.setEnabled(accountsConfirmed && (owner || Settings.canDrawOverlays(this)));
-        releaseDeviceOwner.setVisibility(owner ? View.VISIBLE : View.GONE);
+
+        if (setupComplete && owner) {
+            // Final child mode: hide setup/configuration/debug controls.
+            accounts.setVisibility(View.GONE);
+            continueSetup.setVisibility(View.GONE);
+            backend.setVisibility(View.GONE);
+            child.setVisibility(View.GONE);
+            permission.setVisibility(View.GONE);
+            restoreAccounts.setVisibility(View.GONE);
+            start.setVisibility(View.GONE);
+            test.setVisibility(View.GONE);
+            releaseDeviceOwner.setVisibility(View.GONE);
+        } else {
+            accounts.setVisibility(View.VISIBLE);
+            continueSetup.setVisibility(View.VISIBLE);
+            backend.setVisibility(View.VISIBLE);
+            child.setVisibility(View.VISIBLE);
+            permission.setVisibility(owner ? View.GONE : View.VISIBLE);
+            restoreAccounts.setVisibility(setupComplete ? View.VISIBLE : View.GONE);
+            start.setVisibility(View.VISIBLE);
+            test.setVisibility(View.VISIBLE);
+            releaseDeviceOwner.setVisibility(owner ? View.VISIBLE : View.GONE);
+        }
 
         if (setupComplete) {
             status.setText(owner ? "READY — Managed Bedtime Monitor running" : "READY — Fallback Bedtime Monitor running");
@@ -196,7 +211,6 @@ public class MainActivity extends Activity {
             refreshSetupState();
             return;
         }
-
         new AlertDialog.Builder(this)
             .setTitle("TEST ONLY — Release Device Owner?")
             .setMessage("Gamitin lang ito sa test device. Tatanggalin nito ang Device Owner role para ma-uninstall o ma-reprovision ang app. Hindi nito ginagawa ang factory reset.")
@@ -208,7 +222,6 @@ public class MainActivity extends Activity {
     @SuppressWarnings("deprecation")
     private void releaseDeviceOwnerForTesting() {
         if (dpm == null || !dpm.isDeviceOwnerApp(getPackageName())) return;
-
         try {
             BedtimeStorage.setLastActive(this, false);
             BedtimeStorage.setSetup(this, getSharedPreferences("cfg", MODE_PRIVATE).getString("backend", ""), getSharedPreferences("cfg", MODE_PRIVATE).getString("child", "child-001"), false);
@@ -218,7 +231,6 @@ public class MainActivity extends Activity {
                 unlock.putExtra("bedtime_off", true);
                 startActivity(unlock);
             } catch (Exception ignored) {}
-
             dpm.clearDeviceOwnerApp(getPackageName());
             Toast.makeText(this, "Device Owner released for testing.", Toast.LENGTH_LONG).show();
         } catch (SecurityException e) {
