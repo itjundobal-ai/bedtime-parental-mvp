@@ -24,7 +24,7 @@ import org.json.JSONObject;
 public class MainActivity extends Activity {
     private EditText backend, child, pairingCode;
     private TextView status, setupStep, deviceOwnerStatus, deviceOwnerHelp, pairingStatus;
-    private Button accounts, continueSetup, permission, start, battery, autoRun, saveRestart,
+    private Button accounts, continueSetup, activeDeviceOwner, permission, start, battery, autoRun, saveRestart,
             restoreAccounts, test, releaseDeviceOwner, pairWithParent;
     private LinearLayout pairingPanel;
     private DevicePolicyManager dpm;
@@ -42,6 +42,7 @@ public class MainActivity extends Activity {
         deviceOwnerHelp = findViewById(R.id.deviceOwnerHelp);
         accounts = findViewById(R.id.btnAccountsSecurity);
         continueSetup = findViewById(R.id.btnContinueSetup);
+        activeDeviceOwner = findViewById(R.id.btnActiveDeviceOwner);
         permission = findViewById(R.id.btnOverlayPermission);
         start = findViewById(R.id.btnStartMonitor);
         battery = findViewById(R.id.btnBatterySettings);
@@ -67,6 +68,7 @@ public class MainActivity extends Activity {
             BedtimeStorage.mirror(this);
             refreshSetupState();
         });
+        activeDeviceOwner.setOnClickListener(v -> checkDeviceOwnerStep());
         permission.setOnClickListener(v -> startActivity(new Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:" + getPackageName()))));
@@ -78,6 +80,19 @@ public class MainActivity extends Activity {
         test.setOnClickListener(v -> testBedtime());
         releaseDeviceOwner.setOnClickListener(v -> confirmReleaseDeviceOwner());
         pairWithParent.setOnClickListener(v -> redeemPairing(pairingCode.getText().toString().trim()));
+        refreshSetupState();
+    }
+
+    private void checkDeviceOwnerStep() {
+        if (isDeviceOwner()) {
+            deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
+            deviceOwnerHelp.setText("Device Owner is active. Continue with START BEDTIME MONITOR.");
+            Toast.makeText(this, "ACTIVE DEVICE OWNER ✓", Toast.LENGTH_SHORT).show();
+        } else {
+            deviceOwnerStatus.setText("Device Owner: NOT ACTIVE");
+            deviceOwnerHelp.setText("Ikonekta sa PC at patakbuhin:\nadb shell dpm set-device-owner com.master.bedtime.child/.BedtimeDeviceAdminReceiver");
+            Toast.makeText(this, "Device Owner is not active yet.", Toast.LENGTH_LONG).show();
+        }
         refreshSetupState();
     }
 
@@ -146,61 +161,112 @@ public class MainActivity extends Activity {
         boolean ac = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("accounts_confirmed", false);
         boolean done = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("setup_complete", false);
         boolean owner = isDeviceOwner();
+        boolean monitorStarted = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("monitor_started", false);
         boolean paired = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("paired", false);
-        if (!ac) {
-            setupStep.setText("STEP 1 OF 6 — Prepare device");
-            deviceOwnerStatus.setText("Device Owner: waiting for account preparation");
-            deviceOwnerHelp.setText("Alisin muna ang accounts, pagkatapos pindutin ang CONTINUE SETUP.");
-        } else if (!owner) {
-            setupStep.setText("STEP 2 OF 6 — Activate Device Owner");
-            deviceOwnerStatus.setText("Device Owner: NOT ACTIVE");
-            deviceOwnerHelp.setText("Ikonekta sa PC at patakbuhin:\nadb shell dpm set-device-owner com.master.bedtime.child/.BedtimeDeviceAdminReceiver");
-        } else if (!done) {
-            setupStep.setText("STEP 3–6 — Finish Child protection setup");
-            deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
-            deviceOwnerHelp.setText("Start monitor → Battery: No restrictions → Auto-run/Background: Allow → Save & Restart.");
-        } else {
-            setupStep.setText(paired ? "CHILD ACTIVE — PAIRED ✓" : "CHILD ACTIVE ✓");
-            deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
-            deviceOwnerHelp.setText(paired
-                    ? "Parent account connected. Child is ready for remote bedtime control."
-                    : "Setup complete. Now enter the 6-digit code from Parent below.");
+
+        if (!done) {
+            if (!ac) {
+                setupStep.setText("STEP 1 — ACCOUNT / SECURITY");
+                deviceOwnerStatus.setText("Device Owner: waiting for account preparation");
+                deviceOwnerHelp.setText("Alisin muna ang saved accounts, pagkatapos pindutin ang TAPOS NA — CONTINUE SETUP.");
+            } else if (!owner) {
+                setupStep.setText("STEP 2 — ACTIVE DEVICE OWNER");
+                deviceOwnerStatus.setText("Device Owner: NOT ACTIVE");
+                deviceOwnerHelp.setText("Ikonekta sa PC at patakbuhin:\nadb shell dpm set-device-owner com.master.bedtime.child/.BedtimeDeviceAdminReceiver");
+            } else if (!monitorStarted) {
+                setupStep.setText("STEP 3 — START BEDTIME MONITOR");
+                deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
+                deviceOwnerHelp.setText("Device Owner active. Tap START BEDTIME MONITOR. Then configure Battery and Auto-run/Background.");
+            } else {
+                setupStep.setText("STEP 4–6 — BATTERY → AUTO-RUN → SAVE & RESTART");
+                deviceOwnerStatus.setText("Device Owner: ACTIVE ✓");
+                deviceOwnerHelp.setText("Monitor started. Complete Battery: No restrictions and Auto-run/Background: Allow, then tap SAVE & RESTART.");
+            }
+            showSetupUi(owner, done);
+            return;
         }
 
-        start.setVisibility(ac && owner && !done ? View.VISIBLE : View.GONE);
-        battery.setVisibility(owner && !done ? View.VISIBLE : View.GONE);
-        autoRun.setVisibility(owner && !done ? View.VISIBLE : View.GONE);
-        saveRestart.setVisibility(owner && !done ? View.VISIBLE : View.GONE);
-        restoreAccounts.setVisibility(done ? View.VISIBLE : View.GONE);
-        permission.setVisibility(owner ? View.GONE : View.VISIBLE);
-        test.setVisibility(owner ? View.VISIBLE : View.GONE);
+        setupStep.setText(paired ? "CHILD ACTIVE — PAIRED ✓" : "CHILD ACTIVE ✓");
+        deviceOwnerStatus.setText(owner ? "Device Owner: ACTIVE ✓" : "Managed protection needs attention");
+        deviceOwnerHelp.setText(paired
+                ? "Parent account connected. Child is ready for remote bedtime control."
+                : "Setup complete. Now enter the 6-digit code from Parent below.");
+        showCompletedChildUi(owner, paired);
+    }
+
+    private void showSetupUi(boolean owner, boolean done) {
+        // Keep every setup option visible until SAVE & RESTART succeeds.
+        accounts.setVisibility(View.VISIBLE);
+        continueSetup.setVisibility(View.VISIBLE);
+        activeDeviceOwner.setVisibility(View.VISIBLE);
+        backend.setVisibility(View.VISIBLE);
+        child.setVisibility(View.VISIBLE);
+        permission.setVisibility(View.VISIBLE);
+        start.setVisibility(View.VISIBLE);
+        battery.setVisibility(View.VISIBLE);
+        autoRun.setVisibility(View.VISIBLE);
+        saveRestart.setVisibility(View.VISIBLE);
+        restoreAccounts.setVisibility(View.GONE);
+        test.setVisibility(View.VISIBLE);
         releaseDeviceOwner.setVisibility(owner ? View.VISIBLE : View.GONE);
-        pairingPanel.setVisibility(done ? View.VISIBLE : View.GONE);
+        pairingPanel.setVisibility(View.GONE);
 
-        if (done) {
-            accounts.setVisibility(View.GONE);
-            continueSetup.setVisibility(View.GONE);
-            backend.setVisibility(View.GONE);
-            child.setVisibility(View.GONE);
-            permission.setVisibility(View.GONE);
-            start.setVisibility(View.GONE);
-            battery.setVisibility(View.GONE);
-            autoRun.setVisibility(View.GONE);
-            saveRestart.setVisibility(View.GONE);
-            test.setVisibility(View.GONE);
-            releaseDeviceOwner.setVisibility(View.GONE);
-        }
+        accounts.setEnabled(true);
+        continueSetup.setEnabled(true);
+        activeDeviceOwner.setEnabled(true);
+        permission.setEnabled(true);
+        start.setEnabled(true);
+        battery.setEnabled(true);
+        autoRun.setEnabled(true);
+        saveRestart.setEnabled(true);
+        test.setEnabled(true);
+
+        start.setText(getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("monitor_started", false)
+                ? "3. START BEDTIME MONITOR ✓" : "3. START BEDTIME MONITOR");
+        saveRestart.setText("6. SAVE & RESTART");
+        activeDeviceOwner.setText(isDeviceOwner() ? "2. ACTIVE DEVICE OWNER ✓" : "2. ACTIVE DEVICE OWNER");
+    }
+
+    private void showCompletedChildUi(boolean owner, boolean paired) {
+        accounts.setVisibility(View.GONE);
+        continueSetup.setVisibility(View.GONE);
+        activeDeviceOwner.setVisibility(View.GONE);
+        backend.setVisibility(View.GONE);
+        child.setVisibility(View.GONE);
+        permission.setVisibility(View.GONE);
+        start.setVisibility(View.GONE);
+        battery.setVisibility(View.GONE);
+        autoRun.setVisibility(View.GONE);
+        saveRestart.setVisibility(View.GONE);
+        test.setVisibility(View.GONE);
+        releaseDeviceOwner.setVisibility(View.GONE);
+        restoreAccounts.setVisibility(View.VISIBLE);
+        pairingPanel.setVisibility(View.VISIBLE);
+        pairingCode.setEnabled(owner && !paired);
+        pairWithParent.setEnabled(owner && !paired);
+        if (paired) pairingCode.setVisibility(View.GONE);
+        else pairingCode.setVisibility(View.VISIBLE);
+        status.setText(owner ? "CHILD ACTIVE ✓" : "ATTENTION — Device Owner protection is not active");
     }
 
     private void startMonitor() {
+        if (!isDeviceOwner()) {
+            Toast.makeText(this, "ACTIVE DEVICE OWNER FIRST", Toast.LENGTH_LONG).show();
+            return;
+        }
         String base = normalizeBackend(backend.getText().toString());
         String id = child.getText().toString().trim();
-        if (base.isEmpty() || id.isEmpty()) return;
+        if (base.isEmpty() || id.isEmpty()) {
+            Toast.makeText(this, "Backend URL and Child ID are required.", Toast.LENGTH_LONG).show();
+            return;
+        }
         BedtimeStorage.setSetup(this, base, id, true);
-        startForegroundService(new Intent(this, BedtimeMonitorService.class));
+        try { startForegroundService(new Intent(this, BedtimeMonitorService.class)); }
+        catch (Exception e) { Toast.makeText(this, "Monitor start failed: " + e.getMessage(), Toast.LENGTH_LONG).show(); return; }
         getSharedPreferences("cfg", MODE_PRIVATE).edit().putBoolean("monitor_started", true).apply();
+        BedtimeStorage.mirror(this);
         refreshSetupState();
-        Toast.makeText(this, "Monitor started. Next: Battery and Auto-run settings.", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "START BEDTIME MONITOR ✓ — Next: Battery and Auto-run settings.", Toast.LENGTH_LONG).show();
     }
 
     private void openBatterySettings() {
@@ -232,17 +298,25 @@ public class MainActivity extends Activity {
 
     private void saveAndRestart() {
         if (!isDeviceOwner()) {
-            Toast.makeText(this, "Device Owner is not active.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "ACTIVE DEVICE OWNER FIRST", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("monitor_started", false)) {
+            Toast.makeText(this, "START BEDTIME MONITOR first.", Toast.LENGTH_LONG).show();
             return;
         }
         String base = normalizeBackend(backend.getText().toString());
         String id = child.getText().toString().trim();
+        if (base.isEmpty() || id.isEmpty()) {
+            Toast.makeText(this, "Backend URL and Child ID are required.", Toast.LENGTH_LONG).show();
+            return;
+        }
         BedtimeStorage.setSetup(this, base, id, true);
         getSharedPreferences("cfg", MODE_PRIVATE).edit().putBoolean("setup_complete", true).apply();
         BedtimeStorage.mirror(this);
-        startForegroundService(new Intent(this, BedtimeMonitorService.class));
+        try { startForegroundService(new Intent(this, BedtimeMonitorService.class)); } catch (Exception ignored) {}
         refreshSetupState();
-        Toast.makeText(this, "Saved. Restarting Child monitor…", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "Saved. CHILD ACTIVE ✓ — restarting monitor…", Toast.LENGTH_LONG).show();
         new android.os.Handler().postDelayed(() -> {
             try {
                 Intent i = getPackageManager().getLaunchIntentForPackage(getPackageName());
