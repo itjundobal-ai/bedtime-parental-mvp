@@ -18,7 +18,6 @@ import android.widget.Toast;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity {
@@ -79,7 +78,7 @@ public class MainActivity extends Activity {
         restoreAccounts.setOnClickListener(v -> showRestoreAccountsReminder());
         test.setOnClickListener(v -> testBedtime());
         releaseDeviceOwner.setOnClickListener(v -> confirmReleaseDeviceOwner());
-        pairWithParent.setOnClickListener(v -> redeemPairing(pairingCode.getText().toString().trim()));
+        pairWithParent.setOnClickListener(v -> generateChildPairingCode());
         refreshSetupState();
     }
 
@@ -96,65 +95,126 @@ public class MainActivity extends Activity {
         refreshSetupState();
     }
 
-    private void redeemPairing(String c) {
-        if (!c.matches("\\d{6}")) {
-            pairingStatus.setText("Enter the 6-digit code from Parent.");
+    private void generateChildPairingCode() {
+        if (!isDeviceOwner()) {
+            pairingStatus.setText("ACTIVE DEVICE OWNER is required before pairing.");
             return;
         }
         String base = normalizeBackend(backend.getText().toString());
-        pairingStatus.setText("Pairing with Parent…");
+        String requestedId = child.getText().toString().trim();
+        pairingStatus.setText("Generating Child pairing code…");
+        pairWithParent.setEnabled(false);
         new Thread(() -> {
             try {
-                HttpURLConnection x = (HttpURLConnection) new URL(base + "/api/pairing/redeem").openConnection();
+                HttpURLConnection x = (HttpURLConnection) new URL(base + "/api/pairing/child/create").openConnection();
                 x.setRequestMethod("POST");
                 x.setConnectTimeout(7000);
                 x.setReadTimeout(7000);
                 x.setRequestProperty("Content-Type", "application/json");
                 x.setDoOutput(true);
+                String payload = "{\"childId\":\"" + requestedId.replace("\"", "") + "\"}";
                 try (OutputStream o = x.getOutputStream()) {
-                    o.write(("{\"code\":\"" + c + "\"}").getBytes(StandardCharsets.UTF_8));
+                    o.write(payload.getBytes(StandardCharsets.UTF_8));
                 }
                 int r = x.getResponseCode();
                 String body = readBody(x, r);
                 if (r < 200 || r >= 300) throw new Exception(body);
                 JSONObject d = new JSONObject(body);
                 String childId = d.getString("childId");
-                String childToken = d.getString("childToken");
-
-                String recovery = getSharedPreferences("cfg", MODE_PRIVATE)
-                        .getString("recovery_code", "");
-                if (recovery.isEmpty()) {
-                    recovery = generateRecoveryCode();
-                }
-
+                String code = d.getString("code");
                 getSharedPreferences("cfg", MODE_PRIVATE).edit()
                         .putString("backend", base)
                         .putString("child", childId)
-                        .putString("child_token", childToken)
-                        .putString("recovery_code", recovery)
-                        .putBoolean("paired", true)
+                        .putString("pairing_code", code)
+                        .putBoolean("paired", false)
                         .apply();
                 BedtimeStorage.mirror(this);
-                final String finalRecovery = recovery;
                 runOnUiThread(() -> {
                     child.setText(childId);
-                    pairingStatus.setText("✓ CHILD PAIRED WITH PARENT\n\nRECOVERY CODE: "
-                            + finalRecovery + "\n\nSave this code. It is shown only on the Child device.");
-                    setupStep.setText("CHILD ACTIVE — PAIRED ✓");
-                    deviceOwnerHelp.setText("Parent account connected. Child is ready for remote bedtime control.");
-                    Toast.makeText(this, "Child paired. Recovery Code generated.", Toast.LENGTH_LONG).show();
+                    pairingCode.setText(code);
+                    pairingCode.setEnabled(false);
+                    pairWithParent.setEnabled(true);
+                    pairWithParent.setText("GENERATE NEW CODE");
+                    pairingStatus.setText("CHILD PAIRING CODE: " + code
+                            + "\n\nGive this code to the Parent device. Waiting for Parent to enter it…");
                 });
+                pollChildPairingStatus(code);
             } catch (Exception e) {
-                runOnUiThread(() -> pairingStatus.setText("Pairing failed: " + e.getMessage()));
+                runOnUiThread(() -> {
+                    pairWithParent.setEnabled(true);
+                    pairingStatus.setText("Pairing code generation failed: " + safeMessage(e));
+                });
             }
         }).start();
     }
 
-    private String generateRecoveryCode() {
-        int n = new SecureRandom().nextInt(100000000);
-        String code = String.format(java.util.Locale.US, "%08d", n);
-        getSharedPreferences("cfg", MODE_PRIVATE).edit().putString("recovery_code", code).apply();
-        return code;
+    private void ensureChildPairingCode() {
+        String existing = getSharedPreferences("cfg", MODE_PRIVATE).getString("pairing_code", "");
+        boolean paired = getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("paired", false);
+        if (paired) return;
+        if (existing.isEmpty()) {
+            generateChildPairingCode();
+        } else {
+            pairingCode.setText(existing);
+            pairingCode.setEnabled(false);
+            pairWithParent.setText("GENERATE NEW CODE");
+            pairingStatus.setText("CHILD PAIRING CODE: " + existing
+                    + "\n\nGive this code to the Parent device. Waiting for Parent to enter it…");
+            pollChildPairingStatus(existing);
+        }
+    }
+
+    private void pollChildPairingStatus(String code) {
+        if (code == null || !code.matches("\\d{6}")) return;
+        String base = normalizeBackend(backend.getText().toString());
+        new Thread(() -> {
+            try {
+                HttpURLConnection x = (HttpURLConnection) new URL(
+                        base + "/api/pairing/child/status?code=" + code).openConnection();
+                x.setRequestMethod("GET");
+                x.setConnectTimeout(7000);
+                x.setReadTimeout(7000);
+                x.setRequestProperty("Cache-Control", "no-cache");
+                int r = x.getResponseCode();
+                String body = readBody(x, r);
+                if (r < 200 || r >= 300) throw new Exception(body);
+                JSONObject d = new JSONObject(body);
+                boolean valid = d.optBoolean("valid", true);
+                boolean paired = d.optBoolean("paired", false);
+                String childId = d.optString("childId", "");
+                String childToken = d.optString("childToken", "");
+                if (paired && !childToken.isEmpty()) {
+                    getSharedPreferences("cfg", MODE_PRIVATE).edit()
+                            .putString("child", childId)
+                            .putString("child_token", childToken)
+                            .remove("pairing_code")
+                            .putBoolean("paired", true)
+                            .apply();
+                    BedtimeStorage.mirror(this);
+                    runOnUiThread(() -> {
+                        pairingCode.setVisibility(View.GONE);
+                        pairWithParent.setVisibility(View.GONE);
+                        pairingStatus.setText("✓ CHILD PAIRED WITH PARENT\n\nChild ID: " + childId
+                                + "\n\nParent account connected. Child is ready for remote bedtime control.");
+                        setupStep.setText("CHILD ACTIVE — PAIRED ✓");
+                        deviceOwnerHelp.setText("Parent account connected. Child is ready for remote bedtime control.");
+                        Toast.makeText(this, "Child paired successfully ✓", Toast.LENGTH_LONG).show();
+                    });
+                } else if (!valid) {
+                    runOnUiThread(() -> pairingStatus.setText(
+                            "Pairing code expired. Tap GENERATE NEW CODE and give the new code to Parent."));
+                }
+            } catch (Exception e) {
+                runOnUiThread(() -> pairingStatus.setText(
+                        "Pairing status failed: " + safeMessage(e)));
+            } finally {
+                new android.os.Handler().postDelayed(() -> {
+                    if (getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("paired", false)) return;
+                    String current = getSharedPreferences("cfg", MODE_PRIVATE).getString("pairing_code", "");
+                    if (current.equals(code)) pollChildPairingStatus(code);
+                }, 2000L);
+            }
+        }).start();
     }
 
     private void refreshSetupState() {
@@ -190,12 +250,11 @@ public class MainActivity extends Activity {
         deviceOwnerStatus.setText(owner ? "Device Owner: ACTIVE ✓" : "Managed protection needs attention");
         deviceOwnerHelp.setText(paired
                 ? "Parent account connected. Child is ready for remote bedtime control."
-                : "Setup complete. Now enter the 6-digit code from Parent below.");
+                : "This Child generates the 6-digit pairing code. Give it to the Parent.");
         showCompletedChildUi(owner, paired);
     }
 
     private void showSetupUi(boolean owner, boolean done) {
-        // Keep every setup option visible until SAVE & RESTART succeeds.
         accounts.setVisibility(View.VISIBLE);
         continueSetup.setVisibility(View.VISIBLE);
         activeDeviceOwner.setVisibility(View.VISIBLE);
@@ -242,10 +301,18 @@ public class MainActivity extends Activity {
         releaseDeviceOwner.setVisibility(View.GONE);
         restoreAccounts.setVisibility(View.VISIBLE);
         pairingPanel.setVisibility(View.VISIBLE);
-        pairingCode.setEnabled(owner && !paired);
+        pairingCode.setEnabled(false);
         pairWithParent.setEnabled(owner && !paired);
-        if (paired) pairingCode.setVisibility(View.GONE);
-        else pairingCode.setVisibility(View.VISIBLE);
+        if (paired) {
+            pairingCode.setVisibility(View.GONE);
+            pairWithParent.setVisibility(View.GONE);
+        } else {
+            pairingCode.setVisibility(View.VISIBLE);
+            pairWithParent.setVisibility(View.VISIBLE);
+            pairWithParent.setText("GENERATE NEW CODE");
+            if (owner) ensureChildPairingCode();
+            else pairingStatus.setText("ACTIVE DEVICE OWNER is required before generating a pairing code.");
+        }
         status.setText(owner ? "CHILD ACTIVE ✓" : "ATTENTION — Device Owner protection is not active");
     }
 
@@ -388,5 +455,10 @@ public class MainActivity extends Activity {
                     try { dpm.clearDeviceOwnerApp(getPackageName()); } catch (Exception ignored) {}
                     refreshSetupState();
                 }).show();
+    }
+
+    private String safeMessage(Exception e) {
+        String m = e.getMessage();
+        return (m == null || m.trim().isEmpty()) ? e.getClass().getSimpleName() : m;
     }
 }
