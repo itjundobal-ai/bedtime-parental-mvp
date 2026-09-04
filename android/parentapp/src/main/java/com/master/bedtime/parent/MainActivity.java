@@ -182,9 +182,9 @@ public class MainActivity extends Activity {
 
         generateButton.setVisibility(waitingForPair ? View.VISIBLE : View.GONE);
         generateButton.setEnabled(!waitingForPair);
-        addButton.setVisibility(hasPairedChild ? View.VISIBLE : View.GONE);
-        bedtimeOnButton.setVisibility(hasPairedChild ? View.VISIBLE : View.GONE);
-        bedtimeOffButton.setVisibility(hasPairedChild ? View.VISIBLE : View.GONE);
+        addButton.setVisibility(hasPairedChild && !waitingForPair ? View.VISIBLE : View.GONE);
+        bedtimeOnButton.setVisibility(hasPairedChild && !waitingForPair ? View.VISIBLE : View.GONE);
+        bedtimeOffButton.setVisibility(hasPairedChild && !waitingForPair ? View.VISIBLE : View.GONE);
     }
 
     private void generatePairingCode(boolean addingAnotherChild) {
@@ -193,8 +193,8 @@ public class MainActivity extends Activity {
         }
 
         waitingForPair = true;
-        hasPairedChild = false;
         selectedChildId = "";
+        hasPairedChild = false;
         updateParentControls();
         codeView.setText("------");
         statusView.setText(addingAnotherChild
@@ -256,13 +256,16 @@ public class MainActivity extends Activity {
             try {
                 HttpURLConnection c = open(BACKEND + "/api/pairing/status", "GET");
                 c.setRequestProperty("X-Parent-Token", parentToken);
+                c.setRequestProperty("Cache-Control", "no-cache");
                 int http = c.getResponseCode();
                 String body = readBody(c, http);
                 if (http < 200 || http >= 300) throw new Exception(body);
 
                 JSONObject data = new JSONObject(body);
                 JSONArray children = data.optJSONArray("children");
-                boolean paired = false;
+                String pendingId = getPreferences(MODE_PRIVATE).getString("pending_child", "");
+                boolean pendingPaired = false;
+                boolean anyPaired = false;
                 String latestPairedId = "";
                 StringBuilder text = new StringBuilder("Children linked:");
 
@@ -277,33 +280,48 @@ public class MainActivity extends Activity {
                         text.append("\n").append(i + 1).append(". ")
                                 .append(isPaired ? "PAIRED ✓" : "WAITING");
                         if (isPaired) {
-                            paired = true;
+                            anyPaired = true;
                             latestPairedId = id;
+                            if (!pendingId.isEmpty() && pendingId.equals(id)) {
+                                pendingPaired = true;
+                            }
                         }
                     }
                 }
 
-                final boolean finalPaired = paired;
+                final boolean finalAnyPaired = anyPaired;
+                final boolean finalPendingPaired = pendingPaired;
+                final String finalPendingId = pendingId;
                 final String finalLatestId = latestPairedId;
                 final String finalText = text.toString();
 
                 runOnUiThread(() -> {
                     childrenView.setText(finalText);
-                    hasPairedChild = finalPaired;
 
-                    if (finalPaired) {
+                    // IMPORTANT: when ADD creates a new pending child, only that
+                    // exact child can complete the pairing flow. An older paired
+                    // child must never trigger a false "PAIRING SUCCESSFUL".
+                    boolean success = !finalPendingId.isEmpty()
+                            ? finalPendingPaired
+                            : finalAnyPaired;
+
+                    if (success) {
                         waitingForPair = false;
-                        if (!finalLatestId.isEmpty()) {
-                            selectedChildId = finalLatestId;
+                        String chosen = !finalPendingId.isEmpty()
+                                ? finalPendingId : finalLatestId;
+                        if (!chosen.isEmpty()) {
+                            selectedChildId = chosen;
                             getPreferences(MODE_PRIVATE).edit()
                                     .putString("selected_child", selectedChildId)
                                     .remove("pending_child")
                                     .apply();
                         }
+                        hasPairedChild = true;
                         codeView.setText("PAIRED ✓");
                         statusView.setText("PAIRING SUCCESSFUL ✓");
                     } else {
-                        waitingForPair = true;
+                        waitingForPair = !finalPendingId.isEmpty();
+                        hasPairedChild = finalAnyPaired && !waitingForPair;
                     }
                     updateParentControls();
                 });
