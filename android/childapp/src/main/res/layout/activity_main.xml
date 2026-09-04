@@ -2,7 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="24dp" android:gravity="center_horizontal">
 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Child Bedtime Setup" android:textSize="26sp" android:textStyle="bold" />
 <TextView android:id="@+id/setupStep" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="STEP 1 OF 7 — Prepare device" android:textStyle="bold" />
-<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Setup muna. Lahat ng setup options ay visible hanggang SAVE &amp; RESTART succeeds. CHILD ACTIVE → PAIRING → RECOVERY CODE ang huling stage." />
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Setup muna. Lahat ng setup options ay visible hanggang SAVE &amp; RESTART succeeds. Pagkatapos, CHILD ang magge-generate ng pairing code at PARENT ang mag-e-enter nito." />
 <Button android:id="@+id/btnAccountsSecurity" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="1. ACCOUNT / SECURITY — REMOVE SAVED ACCOUNTS" />
 <Button android:id="@+id/btnContinueSetup" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="TAPOS NA — CONTINUE SETUP" />
 <TextView android:id="@+id/deviceOwnerStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Device Owner: checking..." android:textStyle="bold" />
@@ -19,10 +19,10 @@
 <Button android:id="@+id/btnTestOverlay" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="TEST BEDTIME" />
 <Button android:id="@+id/btnReleaseDeviceOwner" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="TEST ONLY — RELEASE DEVICE OWNER" android:visibility="gone" />
 <LinearLayout android:id="@+id/pairingPanel" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="18dp" android:paddingBottom="8dp" android:visibility="gone">
-<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="PARENT ↔ CHILD PAIRING" android:textSize="18sp" android:gravity="center" />
-<EditText android:id="@+id/pairingCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Enter 6-digit code from Parent" android:inputType="number" android:gravity="center" android:textSize="20sp" android:maxLength="6" android:singleLine="true" />
-<Button android:id="@+id/btnPairWithParent" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="PAIR WITH PARENT" />
-<TextView android:id="@+id/pairingStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="After Child setup is complete, enter the Parent code here." />
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="CHILD → PARENT PAIRING" android:textSize="18sp" android:gravity="center" />
+<EditText android:id="@+id/pairingCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Child pairing code" android:inputType="number" android:gravity="center" android:textSize="32sp" android:maxLength="6" android:singleLine="true" />
+<Button android:id="@+id/btnPairWithParent" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="GENERATE PAIRING CODE" />
+<TextView android:id="@+id/pairingStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="After setup, this Child generates the 6-digit code. Give it to Parent." />
 </LinearLayout>
 <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="24dp" android:text="Setup not finished" />
 </LinearLayout></ScrollView>
